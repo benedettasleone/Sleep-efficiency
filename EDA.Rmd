@@ -1,0 +1,85 @@
+---
+title: "Analisi esplorativa"
+author: "Curci, Di Marino, Leone, Stola"
+date: "2024-12-10"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+setwd(getwd())
+data <- read.csv("Sleep_Efficiency.csv")
+n<-dim(data)[1]
+p<-dim(data)[2]
+```
+
+
+## Maschi vs femmine
+suddivisione bilanciata, però gruppi di età diversi: maschi più vecchi, bambini sono solo femmine
+```{r}
+table(data$Gender)
+data$AgeGroup <- cut(data$Age,
+                     breaks = seq(min(data$Age), max(data$Age), length.out = nclass.FD(data$Age)),  # Specifica gli intervalli, scelti seconodo il criterio di Freedman & Diaconis
+                     include.lowest = T, right = T) 
+table(data$AgeGroup, data$Gender)
+boxplot(data$Age~data$Gender)
+
+```
+
+
+## Fumatori non fumatori
+più non fumatori che fumatori; ovviamente i bambini non fumano
+```{r}
+table(data$Smoking.status)
+table(data$AgeGroup, data$Smoking.status)
+boxplot(data$Age~data$Smoking.status)
+boxplot(data$Exercise.frequency~data$Smoking.status)
+```
+
+
+## Esercizio fisico
+la fascia 30-50 anni è quella che fa più frequentemente esercizio fisico, le donne fanno meno esercizio fisico degli uomini ma più intensamente 
+```{r}
+table(data$Exercise.frequency)
+table(data$AgeGroup, data$Exercise.frequency)
+boxplot(data$Age~data$Exercise.frequency)
+table(data$Gender, data$Exercise.frequency)
+boxplot(data$Exercise.frequency~data$Gender)
+```
+
+
+## Caffeina bassa/alta
+alta caffeina per età centrali
+```{r}
+table(data$Caffeine.consumption)
+table(data$AgeGroup, data$Caffeine.consumption)
+table(data$Gender, data$Caffeine.consumption)
+boxplot(data$Age~data$Caffeine.consumption)
+boxplot(data$Caffeine.consumption~data$Gender)
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+plot(data$Caffeine.consumption, data$Age, col=colori)
+```
+
+
+## Alcohol
+meno variabilità tra uomini e donne rispetto alla caffeina
+```{r}
+table(data$Alcohol.consumption)
+table(data$AgeGroup, data$Alcohol.consumption)
+table(data$Gender, data$Alcohol.consumption)
+boxplot(data$Age~data$Alcohol.consumption)
+boxplot(data$Alcohol.consumption~data$Gender)
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+plot(data$Alcohol.consumption, data$Age, col=colori)
+```
+
+
+## Sottogruppi
+
+
+
+
+
+
+
