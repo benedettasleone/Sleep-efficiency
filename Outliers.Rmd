@@ -1,0 +1,43 @@
+
+#### visualizzazione grafica outliers
+
+```{r}
+library(MASS)
+library(rgl)
+library(DepthProc)
+library(hexbin)
+library(aplpack)
+library(robustbase)
+library(MDBED)
+depthContour(
+data[,c(7,12)],
+depth_params = list(method = 'Tukey'),
+points = TRUE,
+colors = colorRampPalette(c('white', 'navy')),
+levels = 10,
+pdmedian = F,
+graph_params = list(cex=.01, pch=1),
+pmean = F
+)
+aplpack::bagplot(data[,c(7,12)],show.whiskers = F,main="Bagplot")
+bagplot_matrix <- aplpack::bagplot.pairs(data[,c(7,8,9,10)])
+plot(data$Sleep.efficiency,data$Deep.sleep.percentage) #2 cluster ben definiti
+plot(data$Sleep.efficiency,data$Light.sleep.percentage)#2 cluster ben definiti
+plot(data$REM.sleep.percentage,data$Light.sleep.percentage)#2 cluster ben definiti 
+#tenere conto del legame tra rem, deep and light
+#analisi bimodale
+#studiare distribuzioni nei due cluster
+
+#sleep efficiency/duration
+depth(u=data[,c(6,7)],method='Tukey')
+depthMedian(data[,c(6,7)],depth_params = list(method='Tukey'))
+df<-as.matrix(data[,c(6,7)])
+DepthProc::depthContour(df,depth_params = list(method='Tukey'))
+depthPersp(df,depth_params = list(method='Tukey'))
+
+#Sleep eff/caffeine
+df<-as.matrix(data[,c(12,7)])
+DepthProc::depthContour(df,depth_params = list(method='Tukey'))
+depthPersp(df,depth_params = list(method='Tukey'),plot_method = 'rgl')
+```
+
