@@ -1,0 +1,102 @@
+##### bootstrap regression
+
+```{r}
+sleepdata<-dplyr::select(data, Age, Gender)
+rm(sleepdata)
+names(data)
+Y <- data$Sleep.efficiency
+names(data)
+Y <- datastd$Sleep.efficiency
+x1 <- datastd$Sleep.duration
+x2 <- datastd$Bedtime
+x3 <- datastd$Age
+x4 <- datastd$Caffeine.consumption
+x5 <- datastd$Exercise.frequency
+x6 <- datastd$Alcohol.consumption
+x7 <- datastd$Deep.sleep.percentage
+x8 <- datastd$Awakenings
+x9 <- datastd$REM.sleep.percentage
+x10 <- datastd$Smoking.status
+model <- lm(Y ~ x1+x2+x3+x5+x7+x6+x10)
+summary(model)
+model <- lm(Y ~ x3+x5+x7+x6+x10)
+summary(model)
+model <- lm(Y ~ x3+x5+x7+x6+x10)
+summary(model)
+griglia <- seq(0, 1)
+griglia <- seq(0, 2500)
+data$Sleep.efficiency
+griglia <- seq(0, 1, 1000)
+fitted.obs <- predict(model)
+fitted.obs
+res.obs <- Y - fitted.obs
+plot(fitted.obs, Y)
+hist(data$Sleep.efficiency)
+hist(Y)
+hist(datastd$Sleep.efficiency)
+plot(fitted.obs, Y)
+plot(model)
+library(progress)
+summary(model)$parameters[1, 1]
+summary(model)$parameters[1, 1]
+summary(model)$parameters[1, 1]
+summary(model)$parameters
+summary(model)
+summary(model)$coefficients[1, 1]
+L.obs <- summary(model)$coefficients[2, 1]
+T.boot.L <- numeric(B)
+B<-2000
+seed<-156
+L.obs <- summary(model)$coefficients[2, 1]
+T.boot.L <- numeric(B)
+formula.b <- response.b ~ logistic(age, L, k, midpoint)
+formula.b <- responseage ~ x3+x5+x7+x6+x10
+pb <- progress_bar$new(
+format = "  processing [:bar] :percent eta: :eta",
+total = B,
+clear = FALSE)
+set.seed(seed)
+for (b in 1:B) {
+response.b <- fitted.obs + sample(res.obs, replace = T)
+fm.b <- lm(formula.b)
+sm.b <- summary(fm.b)
+T.boot.L[b] <- sm.b$coeff[2, 1]
+pb$tick()
+}
+formula.b
+for (b in 1:B) {
+responseage <- fitted.obs + sample(res.obs, replace = T)
+fm.b <- lm(formula.b)
+sm.b <- summary(fm.b)
+T.boot.L[b] <- sm.b$coeff[2, 1]
+pb$tick()
+}
+hist(T.boot.L, main='Asymptote Bootstrap p.m.f.')
+abline(v=L.obs, lty=2)
+plot(ecdf(T.boot.L), main='Asymptote Bootstrap cdf')
+abline(v=L.obs, lty=2)
+sd(T.boot.L)
+bias <- mean(T.boot.L) - L.obs
+MSE <- var(T.boot.L) + (bias)^2
+alpha <- 0.05
+right.quantile.L <- quantile(T.boot.L, 1 - alpha/2)
+left.quantile.L <- quantile(T.boot.L, alpha/2)
+CI.RP.L <- c(L.obs - (right.quantile.L - L.obs),
+L.obs,
+L.obs - (left.quantile.L - L.obs))
+names(CI.RP.L) <- c("lwr", "lvl", "upr")
+CI.RP.L
+attach(O_3)
+plot(ecdf(T.boot.L), main = "L")
+abline(v = L.obs, lty = 2)
+abline(v = CI.RP.L)
+plot(age, circumference, main = "Fitted curve vs data",
+xlim = c(0, 2500), ylim = c(20, 200))
+lines(age_fine, circumference_fine, col = "red")
+abline(h = L.obs, lty = 2)
+abline(h = CI.RP.L)
+abline(h = CI.RP.L)
+lines(age_fine, circumference_fine, col = "red")
+
+```
+
