@@ -1,0 +1,119 @@
+---
+title: "grafici"
+author: "Curci, Di Marino, Leone, Stola"
+date: "2024-12-09"
+output: html_document
+---
+##### Preliminary graphs: boxplot, hystograms
+
+Definisco una funzione che faccia il boxplot di una certa variabile rispetto ad un'eventuale categorica 
+```{r}
+fboxplot <- function (variabile, categorica=NULL, data){
+  par(mfrow=c(1,1))
+  if (is.null(categorica)){
+    print(boxplot(data[[variabile]], main=variabile))
+  } else {
+    print(boxplot(data[[variabile]]~data[[categorica]], main=variabile, xlab=categorica, ylab=" "))
+  }
+}
+```
+
+
+Definisco funzione che faccia istogramma di una variabile rispetto ad un'eventuale categorica
+```{r}
+fistogramma <- function (variabile, categorica=NULL, data){
+  if (is.null(categorica)){
+    par(mfrow=c(1,1))
+    print(hist(data[[variabile]], prob=TRUE, main=paste("istogramma di", variabile), xlab=" "))
+  } else {
+    m<-unique(data[[categorica]])
+    title= paste("istogramma di", variabile, "rispetto a ", categorica)
+    par(mfrow=c(1,length(m)))
+    for (i in 1:length(m))
+      print(hist(data[[variabile]][which(data[[categorica]]==m[i])], xlab= categorica))
+    
+  }
+}
+```
+
+
+Prove stampa boxplot/istogramma
+```{r}
+fboxplot("Age", data = data)
+fboxplot("Age", "Gender", data = data)
+fboxplot("Sleep.duration", "Gender", data)
+fboxplot("Sleep.duration", "AgeGroup", data)
+fistogramma("Sleep.duration", data = data)
+fistogramma("Age", "Gender",data=data)
+```
+
+
+
+
+
+##### Pairs graph: grafici accoppiati con variabile categorica
+```{r}
+pairs(data[,numeric_cols])
+
+
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+pairs(data[,numeric_cols], col=colori)
+
+x11()
+colori <- ifelse(data$Deep.sleep.percentage>41, "red", "green")
+pairs(data[,c(2,6:13,15:p)], col=colori)
+
+
+colori_gruppi <- rainbow(length(levels(data$AgeGroup)))
+colori <- colori_gruppi[as.numeric(data$AgeGroup)] 
+pairs(data[,numeric_cols], col=colori)
+
+```
+
+
+#Trasformo Bedtime_hour== 0 in Bedtime_hour==0+24
+```{r}
+data$Bedtime_hour <- ifelse(data$Bedtime < 4, data$Bedtime + 24, data$Bedtime)
+```
+
+#Profondità del sonno diminuisce se vado a dormire tardi
+```{r}
+library(ggplot2)
+
+# Scatterplot DEEP SLEEP VS BEDTIME
+ggplot(data, aes(x = Bedtime_hour, y = Deep.sleep.percentage)) +
+  geom_point(alpha = 0.6, color = "blue") + # Punti trasparenti per maggiore leggibilità
+  geom_smooth(method = "lm", color = "red", se = FALSE) + # Linea di regressione
+  labs(
+    title = "Relazione tra Sonno Profondo e Ora di Coricamento",
+    x = "Ora di Coricamento (Bedtime_hour)",
+    y = "Percentuale di Sonno Profondo"
+  ) +
+  theme_minimal()
+
+```
+
+
+#Profondità del sonno diminuisce se mi alzo tardi. Controllo: chi si alza tardi corrisponde a chi va a dormire tardi
+```{r}
+#Scatterplot DEEP SLEEP VS WAKEUP
+ggplot(data, aes(x = Wakeup.time, y = Deep.sleep.percentage)) +
+  geom_point(alpha = 0.6, color = "green") +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(
+    title = "Relazione tra Sonno Profondo e Ora di Risveglio",
+    x = "Ora di Risveglio (Wakeup_hour)",
+    y = "Percentuale di Sonno Profondo"
+  ) +
+  theme_minimal()
+```
+
+#COSTRUISCO MODELLI: pvalue bassi
+```{r}
+pb=lm(Deep.sleep.percentage~Bedtime_hour,data=data)
+summary(pb) #pvalue=0.03155
+
+pw=lm(Deep.sleep.percentage~Wakeup.time,data=data)
+summary(pw) #pvalue=0.04759
+
+```
