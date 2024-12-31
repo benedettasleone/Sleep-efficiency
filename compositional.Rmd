@@ -1,0 +1,81 @@
+---
+title: "compositional"
+output: html_document
+date: "2024-12-31"
+---
+```{r}
+library(Compositional)
+library(compositions)
+```
+
+#plot
+```{r}
+datacomp<-data[,8:10]
+dc<-acomp(datacomp) #acomp comunica che datacomp deve essere trattato come dato composizionale
+plot(dc)
+```
+
+
+#test for the mean
+```{r}
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+plot(dc, col=colori)
+dataf <- filter(data, Gender == "Female")
+datam <- filter(data, Gender == "Male")
+x1<-as.matrix(datam[,8:10])
+x2<-as.matrix(dataf[,8:10])
+#test for the mean 
+ait.test(x1, x2, type = 3)
+#test for the equality in distribution
+x<-rbind(x1,x2)
+aeqdist.etest(x, c(228,224), a = 0, R = 999)
+
+
+colori <- ifelse(data$Exercise.frequency ==0, "red", "green")
+plot(dc, col=colori)
+datanoex <- filter(data, Exercise.frequency ==0)
+dataex <- filter(data, Exercise.frequency >0)
+x1<-as.matrix(datanoex[,8:10])
+x2<-as.matrix(dataex[,8:10])
+ait.test(x1, x2, type = 3)
+x<-rbind(x1,x2)
+aeqdist.etest(x, c(116,336), a = 0, R = 999)
+
+colori <- ifelse(data$Smoking.status ==0, "red", "green")
+plot(dc, col=colori)
+datanosmk <- filter(data, Smoking.status ==0)
+datasmk <- filter(data, Smoking.status ==1)
+x1<-as.matrix(datasmk[,8:10])
+x2<-as.matrix(datanosmk[,8:10])
+ait.test(x1, x2, type = 3)
+x<-rbind(x1,x2)
+aeqdist.etest(x, c(154,298), a = 0, R = 999)
+
+colori <- ifelse(data$Caffeine.consumption ==0, "red", "green")
+plot(dc, col=colori)
+datanocaf <- filter(data, Caffeine.consumption ==0)
+datacaf <- filter(data, Caffeine.consumption >0)
+x1<-as.matrix(datanocaf[,8:10])
+x2<-as.matrix(datacaf[,8:10])
+ait.test(x1, x2, type = 3)
+x<-rbind(x1,x2)
+aeqdist.etest(x, c(222,230), a = 0, R = 999)
+
+colori <- ifelse(data$Age<45, "red", "green")
+plot(dc, col=colori)
+datayng <- filter(data, Age<45)
+dataold <- filter(data, Age>=45)
+x1<-as.matrix(datayng[,8:10])
+x2<-as.matrix(dataold[,8:10])
+ait.test(x1, x2, type = 3)
+x<-rbind(x1,x2)
+aeqdist.etest(x, c(271,181), a = 0, R = 999)
+
+```
+i test distribuzionali confermano quanto trovato con mann-whitney, tranne per gender che in questo caso sembra essere significativo
+
+
+```{r}
+
+```
+
