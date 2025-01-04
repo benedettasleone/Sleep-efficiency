@@ -1,0 +1,78 @@
+---
+title: "Latent"
+date: "2025-01-04"
+output: html_document
+---
+
+
+```{r}
+install.packages("mclust")
+library(mclust)
+```
+
+
+Dataset da considerare con variabili continue quindi tolgo smoke(binaria) e gender(categorica)
+```{r}
+lpa_data=data[,c(-1,-3,-14,-16,-17)]
+str(lpa_data)
+
+```
+
+
+Standardizzo se le variabili hanno scale diverse
+```{r}
+lpa_data <- scale(lpa_data)
+
+```
+
+
+
+Assunzione di gaussianità da verificare
+```{r}
+library(MVN)
+result <- mvn(lpa_data, mvnTest = "mardia")
+print(result$multivariateNormality)
+```
+
+
+Assunzione di assenza outliers
+```{r}
+boxplot(lpa_data, main = "Boxplot delle variabili")
+```
+
+
+
+```{r}
+lpa_model <- Mclust(lpa_data)
+summary(lpa_model)
+plot(lpa_model, what = "BIC")
+
+```
+
+
+Numero ottimale di classi secondo il criterio BIC
+```{r}
+lpa_model$G
+```
+
+
+Aggiungo classificazione al dataset
+```{r}
+data$LPA_class <- lpa_model$classification
+table(data$LPA_class)
+```
+
+
+Medie delle variabili per ogni classe
+```{r}
+aggregate(lpa_data, by = list(lpa_model$classification), FUN = mean)
+```
+
+Grafico
+```{r}
+library(ggplot2)
+ggplot(data, aes(x = Deep.sleep.percent, y = REM.sleep.percent, color = factor(LPA_class))) +
+  geom_point() +
+  labs(title = "Latent Profile Analysis", color = "Class")
+```
+
