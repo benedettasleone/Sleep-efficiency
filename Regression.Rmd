@@ -1,28 +1,745 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We have a "weird" cluster of people with a VERY high wage and we observe
+some kind of reverse bathtub behavior. What happens if I try to model it
+linearly?
+
+```{r}
+datajitt <- data %>%
+  mutate(across(c(6, 11, 12, 13, 14, 15), ~  pmax(0,
+                                          jitter(as.numeric(.), length(levels(as.factor(.))),0)
+                                          )
+                ))
+
+plot(datajitt)
+```
+
+# variabili su cui sono interessato svolgere le analisi
+```{r}
+plot(datajitt$Sleep.efficiency, datajitt$Deep.sleep.percentage) 
+plot(datajitt$Age, datajitt$Exercise.frequency)
+plot(datajitt$Awakenings, datajitt$Exercise.frequency)
+plot(datajitt$Exercise.frequency, datajitt$Sleep.efficiency)
+```
+
+# Global Estimation
+## Regressione polinomiale
+```{r}
+plot(datajitt$Sleep.efficiency, datajitt$Deep.sleep.percentage) #prova con un taglio
+
+#polynomial reg
+m_list_eff_deep = lapply(1:10, function(degree){
+   with(datajitt,lm(Sleep.efficiency ~ poly(Deep.sleep.percentage,degree=degree)))})
+do.call(anova, m_list_eff_deep)
+
+
+m_list_eff_deep_raw <- lapply(1:10, function(degree) {
+  with(datajitt, lm(Sleep.efficiency ~ poly(Deep.sleep.percentage, degree = degree, raw = TRUE)))
+})
+
+summary(m_list_eff_deep[[8]]) # non tutte le variabili significative
+summary(m_list_eff_deep[[7]]) # non tutte le variabili significative
+summary(m_list_eff_deep[[6]]) # non tutte le variabili significative
+summary(m_list_eff_deep[[5]]) # Adjusted R-squared:  0.7076
+summary(m_list_eff_deep[[4]]) # Adjusted R-squared:  0.6951
+
+
+summary(m_list_eff_deep_raw[[8]]) # tutte le variabili significative pvalue <0.02
+summary(m_list_eff_deep_raw[[7]])
+summary(m_list_eff_deep_raw[[6]])
+summary(m_list_eff_deep_raw[[5]]) # tutte le variabili significative pvalue <0.02
+summary(m_list_eff_deep_raw[[4]])
+
+#Scegliamo grado 8
+
+plot(m_list_eff_deep[[8]])
+
+deep_sleep_grid <- seq(min(datajitt$Deep.sleep.percentage), max(datajitt$Deep.sleep.percentage),
+                       length.out = 100)
+
+preds <- predict(m_list_eff_deep[[8]], list(Deep.sleep.percentage = deep_sleep_grid), se.fit = TRUE)
+se_bands <- cbind(preds$fit + 2 * preds$se.fit, preds$fit - 2 * preds$se.fit)
+
+plot(datajitt$Deep.sleep.percentage, datajitt$Sleep.efficiency, 
+     xlim = range(deep_sleep_grid), cex = 0.5, col = "darkgrey", 
+     main = "Grado 8 - Polinomio", 
+     xlab = "Deep Sleep Percentage", ylab = "Sleep Efficiency")
+
+lines(deep_sleep_grid, preds$fit, lwd = 2, col = "blue")
+matlines(deep_sleep_grid, se_bands, lwd = 1, col = "blue", lty = 3)
+```
+
+```{r}
+plot(datajitt$Age, datajitt$Exercise.frequency)
+
+m_list_age_exer <- lapply(1:8, function(degree){
+   with(datajitt, lm(Exercise.frequency ~ poly(Age, degree = degree)))
+})
+do.call(anova, m_list_age_exer)
+
+m_list_age_exer_raw <- lapply(1:8, function(degree) {
+  with(datajitt, lm(Exercise.frequency ~ poly(Age, degree = degree, raw = TRUE)))
+})
+
+summary(m_list_age_exer[[6]])
+summary(m_list_age_exer[[5]])
+summary(m_list_age_exer[[4]])
+summary(m_list_age_exer[[3]])
+summary(m_list_age_exer[[2]])
+
+summary(m_list_age_exer_raw[[6]])
+summary(m_list_age_exer_raw[[5]])
+summary(m_list_age_exer_raw[[4]])
+summary(m_list_age_exer_raw[[3]])
+summary(m_list_age_exer_raw[[2]])
+
+plot(m_list_age_exer[[2]])
+
+age_grid <- seq(min(datajitt$Age), max(datajitt$Age), length.out = 100)
+preds_age_exer <- predict(m_list_age_exer[[2]], list(Age = age_grid), se.fit = TRUE)
+se_bands_age_exer <- cbind(preds_age_exer$fit + 2 * preds_age_exer$se.fit, preds_age_exer$fit - 2 * preds_age_exer$se.fit)
+
+plot(datajitt$Age, datajitt$Exercise.frequency, 
+     xlim = range(age_grid), cex = 0.5, col = "darkgrey", 
+     main = "Grado 5 - Polinomio", 
+     xlab = "Age", ylab = "Exercise Frequency")
+lines(age_grid, preds_age_exer$fit, lwd = 2, col = "blue")
+matlines(age_grid, se_bands_age_exer, lwd = 1, col = "blue", lty = 3)
+```
+
+```{r}
+plot(datajitt$Awakenings, datajitt$Exercise.frequency)
+
+m_list_exer_awak <- lapply(1:8, function(degree){
+   with(datajitt, lm(Awakenings ~ poly(Exercise.frequency, degree = degree)))
+})
+do.call(anova, m_list_exer_awak)
+
+m_list_exer_awak_raw <- lapply(1:8, function(degree) {
+  with(datajitt, lm(Awakenings ~ poly(Exercise.frequency, degree = degree, raw = TRUE)))
+})
+
+summary(m_list_exer_awak[[2]])
+summary(m_list_exer_awak[[3]])
+
+summary(m_list_exer_awak_raw[[2]])
+summary(m_list_exer_awak_raw[[3]])
+
+plot(m_list_exer_awak[[2]])
+
+exer_grid <- seq(min(datajitt$Exercise.frequency), max(datajitt$Exercise.frequency), length.out = 300)
+preds_exer_awak <- predict(m_list_exer_awak[[1]], list(Exercise.frequency = exer_grid), se.fit = TRUE)
+se_bands_exer_awak <- cbind(preds_exer_awak$fit + 2 * preds_exer_awak$se.fit, preds_exer_awak$fit - 2 * preds_exer_awak$se.fit)
+
+plot(datajitt$Exercise.frequency, datajitt$Awakenings, 
+     xlim = range(exer_grid), cex = 0.5, col = "darkgrey", 
+     main = "Grado 1 - Linear Regression", 
+     xlab = "Exercise Frequency", ylab = "Awakenings")
+lines(exer_grid, preds_exer_awak$fit, lwd = 2, col = "blue")
+matlines(exer_grid, se_bands_exer_awak, lwd = 1, col = "blue", lty = 3)
+
+
+plot(datajitt$Exercise.frequency, datajitt$Sleep.efficiency)
+
+m_list_exer_sleep <- lapply(1:8, function(degree){
+   with(datajitt, lm(Sleep.efficiency ~ poly(Exercise.frequency, degree = degree)))
+})
+do.call(anova, m_list_exer_sleep)
+
+m_list_exer_sleep_raw <- lapply(1:8, function(degree) {
+  with(datajitt, lm(Sleep.efficiency ~ poly(Exercise.frequency, degree = degree, raw = TRUE)))
+})
+
+summary(m_list_exer_sleep[[6]])
+summary(m_list_exer_sleep[[5]])
+summary(m_list_exer_sleep[[4]])
+summary(m_list_exer_sleep[[3]])
+summary(m_list_exer_sleep[[2]])
+
+summary(m_list_exer_sleep_raw[[6]])
+summary(m_list_exer_sleep_raw[[5]])
+summary(m_list_exer_sleep_raw[[4]])
+summary(m_list_exer_sleep_raw[[3]])
+summary(m_list_exer_sleep_raw[[2]])
+
+
+plot(m_list_exer_sleep[[1]])
+
+exer_grid <- seq(min(datajitt$Exercise.frequency), max(datajitt$Exercise.frequency), length.out = 100)
+preds_exer_sleep <- predict(m_list_exer_sleep[[1]], list(Exercise.frequency = exer_grid), se.fit = TRUE)
+se_bands_exer_sleep <- cbind(preds_exer_sleep$fit + 2 * preds_exer_sleep$se.fit, preds_exer_sleep$fit - 2 * preds_exer_sleep$se.fit)
+
+plot(datajitt$Exercise.frequency, datajitt$Sleep.efficiency, 
+     xlim = range(exer_grid), cex = 0.5, col = "darkgrey", 
+     main = "Grado 1 - Linear Regression", 
+     xlab = "Exercise Frequency", ylab = "Sleep Efficiency")
+lines(exer_grid, preds_exer_sleep$fit, lwd = 2, col = "blue")
+matlines(exer_grid, se_bands_exer_sleep, lwd = 1, col = "blue", lty = 3)
+
+```
+
+## Regressione Logistica carina
+```{r}
+m_list_logit_eff = lapply(1:6,function(degree){with(datajitt, glm(I(Sleep.efficiency>0.8) ~ poly(Deep.sleep.percentage,degree=degree),family='binomial'))})
+do.call(what = anova, c(list(test="Chisq"), m_list_logit_eff))
+
+deep_sleep_grid <- seq(min(datajitt$Deep.sleep.percentage), max(datajitt$Deep.sleep.percentage), length.out = 100)
+preds <- predict(m_list_logit_eff[[4]], list(Deep.sleep.percentage = deep_sleep_grid), se.fit = TRUE)
+
+logistic <- function(x) exp(x) / (1 + exp(x))
+pfit <- sapply(preds$fit, FUN = logistic)
+
+se_bands_logit <- cbind(preds$fit + 1.5 * preds$se.fit, preds$fit - 1.5 * preds$se.fit)
+se_bands <- logistic(se_bands_logit) 
+
+plot(datajitt$Deep.sleep.percentage, I(datajitt$Sleep.efficiency > 0.8), 
+     xlim = range(deep_sleep_grid), type = "n", ylim = c(0, 1), 
+     xlab = "Deep Sleep Percentage", ylab = "P(Sleep Efficiency > 0.8)", 
+     main = "Grado 4 - Modello Logistico")
+
+points(jitter(datajitt$Deep.sleep.percentage), (datajitt$Sleep.efficiency > 0.8), 
+       cex = 1, pch = 'I', col = "black")
+
+lines(deep_sleep_grid, pfit, lwd = 2, col = "blue4")
+matlines(deep_sleep_grid, se_bands, lwd = 1, col = "blue4", lty = 3)
+
+
+preds2 <- predict(m_list_logit_eff[[2]], list(Deep.sleep.percentage = deep_sleep_grid), se.fit = TRUE)
+
+pfit2 <- sapply(preds2$fit, FUN = logistic)
+se_bands_logit2 <- cbind(preds2$fit + 0.5 * preds2$se.fit, preds2$fit - 0.5 * preds2$se.fit)
+se_bands2 <- logistic(se_bands_logit2)
+
+plot(datajitt$Deep.sleep.percentage, I(datajitt$Sleep.efficiency > 0.8), 
+     xlim = range(deep_sleep_grid), type = "n", ylim = c(0, 1), 
+     xlab = "Deep Sleep Percentage", ylab = "P(Sleep Efficiency > 0.8)", 
+     main = "Grado 2 - Modello Logistico")
+points(jitter(datajitt$Deep.sleep.percentage), (datajitt$Sleep.efficiency > 0.8), 
+       cex = 1, pch = 'I', col = "black")
+lines(deep_sleep_grid, pfit2, lwd = 2, col = "aquamarine4")
+matlines(deep_sleep_grid, se_bands2, lwd = 1, col = "aquamarine4", lty = 3)
+```
+
+## Step function:
+
+```{r}
+### plot(datajitt$Sleep.efficiency, datajitt$Deep.sleep.percentage)
+
+m_cut_eff_deep <- with(datajitt, lm(Sleep.efficiency ~ cut(Deep.sleep.percentage,breaks = c(-Inf,45,+Inf))))
+broom::tidy(summary(m_cut_eff_deep)) %>% 
+   dplyr::mutate(term=ifelse(term=="(Intercept)","(-Inf,45]", "(45, Inf]"))
+
+deep_sleep_grid <- seq(min(datajitt$Deep.sleep.percentage), max(datajitt$Deep.sleep.percentage), by = 0.3)
+preds <- predict(m_cut_eff_deep, list(Deep.sleep.percentage = deep_sleep_grid), se.fit = TRUE)
+se_bands <- cbind(preds$fit + 2 * preds$se.fit, preds$fit - 2 * preds$se.fit)
+
+with(datajitt, 
+     plot(Deep.sleep.percentage, Sleep.efficiency, cex = 0.5, main = "Custom Cut Fit", 
+          xlab = "Sleep Efficiency", ylab = "Deep Sleep Percentage"))
+
+lines(deep_sleep_grid, preds$fit, lwd = 2, col = "blue")
+matlines(deep_sleep_grid, se_bands, lwd = 1, col = "blue", lty = 3)
+
+### plot(datajitt$Age, datajitt$Exercise.frequency)
+m_cut_age_exer <- with(datajitt, 
+                       lm(Exercise.frequency ~ cut(Age, breaks = 8)))
+summary(m_cut_age_exer)
+
+age_grid <- seq(min(datajitt$Age), max(datajitt$Age), by = 0.01)
+
+preds_age_exer <- predict(m_cut_age_exer, list(Age = age_grid), se.fit = TRUE)
+se_bands_age_exer <- cbind(preds_age_exer$fit + 2 * preds_age_exer$se.fit, preds_age_exer$fit - 2 * preds_age_exer$se.fit)
+
+with(datajitt, 
+     plot(Age, Exercise.frequency, cex = 0.5, main = "Custom Cut Fit (Age vs Exercise Frequency)", 
+          xlab = "Age", ylab = "Exercise Frequency"))
+lines(age_grid, preds_age_exer$fit, lwd = 2, col = "blue")
+matlines(age_grid, se_bands_age_exer, lwd = 1, col = "blue", lty = 3)
+
+### plot(datajitt$Awakenings, datajitt$Exercise.frequency)
+m_cut_awak_exer <- with(datajitt, 
+                        lm(Exercise.frequency ~ cut(Awakenings, breaks = c(-Inf, 1.5, +Inf))))
+summary(m_cut_awak_exer)
+
+awak_grid <- seq(min(datajitt$Awakenings), max(datajitt$Awakenings), by = 0.01)
+
+preds_awak_exer <- predict(m_cut_awak_exer, list(Awakenings = awak_grid), se.fit = TRUE)
+se_bands_awak_exer <- cbind(preds_awak_exer$fit + 2 * preds_awak_exer$se.fit, preds_awak_exer$fit - 2 * preds_awak_exer$se.fit)
+
+with(datajitt, 
+     plot(Awakenings, Exercise.frequency, cex = 0.5, main = "Custom Cut Fit (Awakenings vs Exercise Frequency)", 
+          xlab = "Awakenings", ylab = "Exercise Frequency"))
+lines(awak_grid, preds_awak_exer$fit, lwd = 2, col = "blue")
+matlines(awak_grid, se_bands_awak_exer, lwd = 1, col = "blue", lty = 3)
+
+### plot(datajitt$Exercise.frequency, datajitt$Sleep.efficiency)
+m_cut_exer_sleep <- with(datajitt, 
+                         lm(Sleep.efficiency ~ cut(Exercise.frequency, breaks = c(-Inf, 2, 4, +Inf))))
+summary(m_cut_exer_sleep)
+
+exer_grid <- seq(min(datajitt$Exercise.frequency), max(datajitt$Exercise.frequency), by = 0.01)
+
+preds_exer_sleep <- predict(m_cut_exer_sleep, list(Exercise.frequency = exer_grid), se.fit = TRUE)
+se_bands_exer_sleep <- cbind(preds_exer_sleep$fit + 2 * preds_exer_sleep$se.fit, preds_exer_sleep$fit - 2 * preds_exer_sleep$se.fit)
+
+with(datajitt, 
+     plot(Exercise.frequency, Sleep.efficiency, cex = 0.5, main = "Custom Cut Fit (Exercise Frequency vs Sleep Efficiency)", 
+          xlab = "Exercise Frequency", ylab = "Sleep Efficiency"))
+lines(exer_grid, preds_exer_sleep$fit, lwd = 2, col = "blue")
+matlines(exer_grid, se_bands_exer_sleep, lwd = 1, col = "blue", lty = 3)
+```
+
+# Local Regression
+```{r message=FALSE, warning=FALSE}
+library(ISLR2)
+library(car)
+library(np)
+library(splines)
+library(fda)
+library(magrittr)
+library(KernSmooth)
+```
+
+## Uniform Kernel
+```{r}
+## plot(datajitt$Deep.sleep.percentage, datajitt$Sleep.efficiency)
+m_loc_deep_eff_25 <- with(datajitt, 
+                          npreg(Sleep.efficiency ~ Deep.sleep.percentage,
+                                ckertype = 'uniform',
+                                bws = 25)
+)
+
+m_loc_deep_eff_15 <- with(datajitt, 
+                          npreg(Sleep.efficiency ~ Deep.sleep.percentage,
+                                ckertype = 'uniform',
+                                bws = 15)
+)
+
+m_loc_deep_eff_8.5 <- with(datajitt, 
+                           npreg(Sleep.efficiency ~ Deep.sleep.percentage,
+                                 ckertype = 'uniform',
+                                 bws = 8.5)
+)
+
+deep_newdata <- data.frame(Deep.sleep.percentage = with(datajitt, 
+                                                       seq(range(Deep.sleep.percentage)[1], 
+                                                          range(Deep.sleep.percentage)[2],
+                                                          by = 0.005))
+)
+
+preds_25 <- predict(m_loc_deep_eff_25, newdata = deep_newdata, se = TRUE)
+preds_15 <- predict(m_loc_deep_eff_15, newdata = deep_newdata, se = TRUE)
+preds_8.5 <- predict(m_loc_deep_eff_8.5, newdata = deep_newdata, se = TRUE)
+
+se_bands_25 <- cbind(preds_25$fit + 2 * preds_25$se.fit, preds_25$fit - 2 * preds_25$se.fit)
+se_bands_15 <- cbind(preds_15$fit + 2 * preds_15$se.fit, preds_15$fit - 2 * preds_15$se.fit)
+se_bands_8.5 <- cbind(preds_8.5$fit + 2 * preds_8.5$se.fit, preds_8.5$fit - 2 * preds_8.5$se.fit)
+
+with(datajitt,
+     plot(Deep.sleep.percentage, Sleep.efficiency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Local Averaging - Uniform Kernel",
+          xlab = "Deep Sleep Percentage",
+          ylab = "Sleep Efficiency"
+     )
+)
+
+lines(deep_newdata$Deep.sleep.percentage, preds_25$fit, lwd = 2, col = "blue4", lty = 1)
+matlines(deep_newdata$Deep.sleep.percentage, se_bands_25, lwd = 1, col = "blue4", lty = 3)
+
+lines(deep_newdata$Deep.sleep.percentage, preds_15$fit, lwd = 2, col = "red4", lty = 1)
+matlines(deep_newdata$Deep.sleep.percentage, se_bands_15, lwd = 1, col = "red4", lty = 3)
+
+lines(deep_newdata$Deep.sleep.percentage, preds_8.5$fit, lwd = 2, col = "darkgreen", lty = 1)
+matlines(deep_newdata$Deep.sleep.percentage, se_bands_8.5, lwd = 1, col = "darkgreen", lty = 3)
+
+legend("topleft", 
+       legend = c("bws = 25", "bws = 15", "bws = 8.5"), 
+       col = c("blue4", "red4", "green4"), 
+       lty = c(1, 1, 1), 
+       lwd = 2, 
+       title = "Bandwidths",
+       bty = "n")
+
+```
+
+## Uniform Kernel
+
+```{r}
+## plot(datajitt$Age, datajitt$Exercise.frequency)
+m_loc_age_exer_7 <- with(datajitt, 
+                         npreg(Exercise.frequency ~ Age,
+                               ckertype = 'uniform',
+                               bws = 12)
+)
+
+m_loc_age_exer_4.1 <- with(datajitt, 
+                           npreg(Exercise.frequency ~ Age,
+                                 ckertype = 'uniform',
+                                 bws = 6)
+)
+
+m_loc_age_exer_2.5 <- with(datajitt, 
+                           npreg(Exercise.frequency ~ Age,
+                                 ckertype = 'uniform',
+                                 bws = 2.3)
+)
+
+age_newdata <- data.frame(Age = with(datajitt, 
+                                     seq(range(Age)[1], range(Age)[2], by = 0.1))
+)
+
+preds_age_7 <- predict(m_loc_age_exer_7, newdata = age_newdata, se = TRUE)
+preds_age_4.1 <- predict(m_loc_age_exer_4.1, newdata = age_newdata, se = TRUE)
+preds_age_2.5 <- predict(m_loc_age_exer_2.5, newdata = age_newdata, se = TRUE)
+
+se_bands_age_7 <- cbind(preds_age_7$fit + 2 * preds_age_7$se.fit, preds_age_7$fit - 2 * preds_age_7$se.fit)
+se_bands_age_4.1 <- cbind(preds_age_4.1$fit + 2 * preds_age_4.1$se.fit, preds_age_4.1$fit - 2 * preds_age_4.1$se.fit)
+se_bands_age_2.5 <- cbind(preds_age_2.5$fit + 2 * preds_age_2.5$se.fit, preds_age_2.5$fit - 2 * preds_age_2.5$se.fit)
+
+with(datajitt,
+     plot(Age, Exercise.frequency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Local Averaging - Age vs Exercise Frequency",
+          xlab = "Age",
+          ylab = "Exercise Frequency"
+     )
+)
+
+
+lines(age_newdata$Age, preds_age_7$fit, lwd = 2, col = "blue4", lty = 1)
+matlines(age_newdata$Age, se_bands_age_7, lwd = 1, col = "blue4", lty = 3)
+lines(age_newdata$Age, preds_age_4.1$fit, lwd = 2, col = "red4", lty = 1)
+matlines(age_newdata$Age, se_bands_age_4.1, lwd = 1, col = "red4", lty = 3)
+lines(age_newdata$Age, preds_age_2.5$fit, lwd = 2, col = "green4", lty = 1)
+matlines(age_newdata$Age, se_bands_age_2.5, lwd = 1, col = "green4", lty = 3)
+
+legend("topleft", 
+       legend = c("bws = 12", "bws = 6", "bws = 2.3"), 
+       col = c("blue4", "red4", "green4"), 
+       lty = c(1, 1, 1), 
+       lwd = 2, 
+       title = "Bandwidths",
+       bty = "n"
+)
+## plot(datajitt$Awakenings, datajitt$Exercise.frequency)
+m_loc_awak_exer_1.9 <- with(datajitt, 
+                            npreg(Exercise.frequency ~ Awakenings,
+                                  ckertype = 'uniform',
+                                  bws = 1.9)
+)
+
+m_loc_awak_exer_0.4 <- with(datajitt, 
+                            npreg(Exercise.frequency ~ Awakenings,
+                                  ckertype = 'uniform',
+                                  bws = 0.4)
+)
+
+awak_newdata <- data.frame(Awakenings = with(datajitt, 
+                                            seq(range(Awakenings)[1], range(Awakenings)[2], by = 0.01))
+)
+
+preds_awak_1.9 <- predict(m_loc_awak_exer_1.9, newdata = awak_newdata, se = TRUE)
+preds_awak_0.4 <- predict(m_loc_awak_exer_0.4, newdata = awak_newdata, se = TRUE)
+
+se_bands_awak_1.9 <- cbind(preds_awak_1.9$fit + 2 * preds_awak_1.9$se.fit, preds_awak_1.9$fit - 2 * preds_awak_1.9$se.fit)
+se_bands_awak_0.4 <- cbind(preds_awak_0.4$fit + 2 * preds_awak_0.4$se.fit, preds_awak_0.4$fit - 2 * preds_awak_0.4$se.fit)
+
+with(datajitt,
+     plot(Awakenings, Exercise.frequency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Local Averaging - Awakenings vs Exercise Frequency",
+          xlab = "Awakenings",
+          ylab = "Exercise Frequency"
+     )
+)
+
+lines(awak_newdata$Awakenings, preds_awak_1.9$fit, lwd = 2, col = "blue4", lty = 1)
+matlines(awak_newdata$Awakenings, se_bands_awak_1.9, lwd = 1, col = "blue4", lty = 3)
+
+lines(awak_newdata$Awakenings, preds_awak_0.4$fit, lwd = 2, col = "green4", lty = 1)
+matlines(awak_newdata$Awakenings, se_bands_awak_0.4, lwd = 1, col = "green4", lty = 3)
+
+legend("topleft", 
+       legend = c("bws = 1.9", "bws = 0.4"), 
+       col = c("blue4", "green4"), 
+       lty = c(1, 1), 
+       lwd = 2, 
+       title = "Bandwidths",
+       bty = "n"
+)
+
+## plot(datajitt$Exercise.frequency, datajitt$Sleep.efficiency)
+m_loc_exer_sleep_2.2 <- with(datajitt,
+                             npreg(Sleep.efficiency ~ Exercise.frequency,
+                                   ckertype = 'uniform',
+                                   bws = 2.2)
+)
+
+m_loc_exer_sleep_0.8 <- with(datajitt, 
+                             npreg(Sleep.efficiency ~ Exercise.frequency,
+                                   ckertype = 'uniform',
+                                   bws = 0.8)
+)
+
+m_loc_exer_sleep_0.3 <- with(datajitt, 
+                             npreg(Sleep.efficiency ~ Exercise.frequency,
+                                   ckertype = 'uniform',
+                                   bws = 0.3)
+)
+
+exer_newdata <- data.frame(Exercise.frequency = with(datajitt, 
+                                                    seq(range(Exercise.frequency)[1], range(Exercise.frequency)[2], by = 0.01))
+)
+
+preds_exer_2.2 <- predict(m_loc_exer_sleep_2.2, newdata = exer_newdata, se = TRUE)
+preds_exer_0.8 <- predict(m_loc_exer_sleep_0.8, newdata = exer_newdata, se = TRUE)
+preds_exer_0.3 <- predict(m_loc_exer_sleep_0.3, newdata = exer_newdata, se = TRUE)
+
+se_bands_exer_2.2 <- cbind(preds_exer_2.2$fit + 2 * preds_exer_2.2$se.fit, preds_exer_2.2$fit - 2 * preds_exer_2.2$se.fit)
+se_bands_exer_0.8 <- cbind(preds_exer_0.8$fit + 2 * preds_exer_0.8$se.fit, preds_exer_0.8$fit - 2 * preds_exer_0.8$se.fit)
+se_bands_exer_0.3 <- cbind(preds_exer_0.3$fit + 2 * preds_exer_0.3$se.fit, preds_exer_0.3$fit - 2 * preds_exer_0.3$se.fit)
+
+with(datajitt,
+     plot(Exercise.frequency, Sleep.efficiency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Local Averaging - Exercise Frequency vs Sleep Efficiency",
+          xlab = "Exercise Frequency",
+          ylab = "Sleep Efficiency"
+     )
+)
+
+lines(exer_newdata$Exercise.frequency, preds_exer_2.2$fit, lwd = 2, col = "blue4", lty = 1)
+matlines(exer_newdata$Exercise.frequency, se_bands_exer_2.2, lwd = 1, col = "blue4", lty = 3)
+lines(exer_newdata$Exercise.frequency, preds_exer_0.8$fit, lwd = 2, col = "red4", lty = 1)
+matlines(exer_newdata$Exercise.frequency, se_bands_exer_0.8, lwd = 1, col = "red4", lty = 3)
+lines(exer_newdata$Exercise.frequency, preds_exer_0.3$fit, lwd = 2, col = "green4", lty = 1)
+matlines(exer_newdata$Exercise.frequency, se_bands_exer_0.3, lwd = 1, col = "green4", lty = 3)
+
+legend("topleft", 
+       legend = c("bws = 2.2", "bws = 0.8", "bws = 0.3"), 
+       col = c("blue4", "red4", "green4"), 
+       lty = c(1, 1, 1), 
+       lwd = 2, 
+       title = "Bandwidths",
+       bty = "n"
+)
+```
+
+## Kernel gaussian
+
+```{r}
+## plot(datajitt$Sleep.efficiency, datajitt$Deep.sleep.percentage)
+m_loc_deep_sleep_gaus <- with(datajitt, 
+                              npreg(Sleep.efficiency ~ Deep.sleep.percentage,
+                                    ckertype = 'gaussian',
+                                    bws = 5.8)
+)
+deep_newdata <- data.frame(Deep.sleep.percentage = with(datajitt, 
+                                                       seq(range(Deep.sleep.percentage)[1], range(Deep.sleep.percentage)[2], by = 0.1))
+)
+preds_deep_gaus <- predict(m_loc_deep_sleep_gaus, newdata = deep_newdata, se = TRUE)
+se_bands_deep_gaus <- cbind(preds_deep_gaus$fit + 2 * preds_deep_gaus$se.fit, preds_deep_gaus$fit - 2 * preds_deep_gaus$se.fit)
+
+m_loess_deep <- loess(Sleep.efficiency ~ Deep.sleep.percentage, # Modello LOESS
+                      span = 0.35, 
+                      degree = 0,  # Estimatore di Nadaraya-Watson
+                      data = datajitt)
+preds_loess_deep <- predict(m_loess_deep, newdata = deep_newdata, se = TRUE)
+se_bands_loess_deep <- cbind(preds_loess_deep$fit + 2 * preds_loess_deep$se.fit, preds_loess_deep$fit - 2 * preds_loess_deep$se.fit)
+
+# Plot
+with(datajitt,
+     plot(Deep.sleep.percentage, Sleep.efficiency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Deep Sleep Percentage vs Sleep Efficiency",
+          xlab = "Deep Sleep Percentage",
+          ylab = "Sleep Efficiency"
+     )
+)
+lines(deep_newdata$Deep.sleep.percentage, preds_deep_gaus$fit, lwd = 2, col = "blue4", lty = 1)
+matlines(deep_newdata$Deep.sleep.percentage, se_bands_deep_gaus, lwd = 1, col = "blue4", lty = 3)
+lines(deep_newdata$Deep.sleep.percentage, preds_loess_deep$fit, lwd = 2, col = "orangered", lty = 1)
+matlines(deep_newdata$Deep.sleep.percentage, se_bands_loess_deep, lwd = 1, col = "orangered", lty = 3)
+legend("topleft", 
+       legend = c("Gaussian Kernel", "LOESS"), 
+       col = c("blue4", "orangered"), 
+       lty = c(1, 1), 
+       lwd = 2, 
+       title = "Methods",
+       bty = "n"
+)
+
+
+## plot(datajitt$Age, datajitt$Exercise.frequency)
+m_loc_age_exer_gaus <- with(datajitt, 
+                            npreg(Exercise.frequency ~ Age,
+                                  ckertype = 'gaussian',
+                                  bws = 6)
+)
+age_newdata <- data.frame(Age = with(datajitt, 
+                                     seq(range(Age)[1], range(Age)[2], by = 0.1))
+)
+preds_age_gaus <- predict(m_loc_age_exer_gaus, newdata = age_newdata, se = TRUE)
+se_bands_age_gaus <- cbind(preds_age_gaus$fit + 2 * preds_age_gaus$se.fit, preds_age_gaus$fit - 2 * preds_age_gaus$se.fit)
+
+m_loess_age <- loess(Exercise.frequency ~ Age,
+                     span = 0.35, 
+                     degree = 0,  # Estimatore di Nadaraya-Watson
+                     data = datajitt)
+preds_loess_age <- predict(m_loess_age, newdata = age_newdata, se = TRUE)
+se_bands_loess_age <- cbind(preds_loess_age$fit + 2 * preds_loess_age$se.fit, preds_loess_age$fit - 2 * preds_loess_age$se.fit)
+
+with(datajitt,
+     plot(Age, Exercise.frequency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Age vs Exercise Frequency",
+          xlab = "Age",
+          ylab = "Exercise Frequency"
+     )
+)
+lines(age_newdata$Age, preds_age_gaus$fit, lwd = 2, col = "darkorchid", lty = 1)
+matlines(age_newdata$Age, se_bands_age_gaus, lwd = 1, col = "darkorchid", lty = 3)
+lines(age_newdata$Age, preds_loess_age$fit, lwd = 2, col = "orangered", lty = 1)
+matlines(age_newdata$Age, se_bands_loess_age, lwd = 1, col = "orangered", lty = 3)
+legend("topleft", 
+       legend = c("Gaussian Kernel", "LOESS"), 
+       col = c("darkorchid", "orangered"), 
+       lty = c(1, 1), 
+       lwd = 2, 
+       title = "Methods",
+       bty = "n"
+)
+
+## plot(datajitt$Awakenings, datajitt$Exercise.frequency)
+m_loc_awak_exer_gaus <- with(datajitt, 
+                             npreg(Exercise.frequency ~ Awakenings,
+                                   ckertype = 'gaussian',
+                                   bws = 0.4)
+)
+awak_newdata <- data.frame(Awakenings = with(datajitt, 
+                                            seq(range(Awakenings)[1], range(Awakenings)[2], by = 0.01))
+)
+preds_awak_gaus <- predict(m_loc_awak_exer_gaus, newdata = awak_newdata, se = TRUE)
+se_bands_awak_gaus <- cbind(preds_awak_gaus$fit + 2 * preds_awak_gaus$se.fit, preds_awak_gaus$fit - 2 * preds_awak_gaus$se.fit)
+
+m_loess_awak <- loess(Exercise.frequency ~ Awakenings,
+                      span = 0.35, 
+                      degree = 0,  # Estimatore di Nadaraya-Watson
+                      data = datajitt)
+preds_loess_awak <- predict(m_loess_awak, newdata = awak_newdata, se = TRUE)
+se_bands_loess_awak <- cbind(preds_loess_awak$fit + 2 * preds_loess_awak$se.fit, preds_loess_awak$fit - 2 * preds_loess_awak$se.fit)
+
+with(datajitt,
+     plot(Awakenings, Exercise.frequency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Awakenings vs Exercise Frequency",
+          xlab = "Awakenings",
+          ylab = "Exercise Frequency"
+     )
+)
+lines(awak_newdata$Awakenings, preds_awak_gaus$fit, lwd = 2, col = "green4", lty = 1)
+matlines(awak_newdata$Awakenings, se_bands_awak_gaus, lwd = 1, col = "green4", lty = 3)
+lines(awak_newdata$Awakenings, preds_loess_awak$fit, lwd = 2, col = "orangered", lty = 1)
+matlines(awak_newdata$Awakenings, se_bands_loess_awak, lwd = 1, col = "orangered", lty = 3)
+legend("topleft", 
+       legend = c("Gaussian Kernel", "LOESS"), 
+       col = c("green4", "orangered"), 
+       lty = c(1, 1), 
+       lwd = 2, 
+       title = "Methods",
+       bty = "n")
+
+## plot(datajitt$Exercise.frequency, datajitt$Sleep.efficiency)
+m_loc_exer_sleep_gaus <- with(datajitt, 
+                              npreg(Sleep.efficiency ~ Exercise.frequency,
+                                    ckertype = 'gaussian',
+                                    bws = 0.6)
+)
+exer_newdata <- data.frame(Exercise.frequency = with(datajitt, 
+                                                    seq(range(Exercise.frequency)[1], range(Exercise.frequency)[2], by = 0.01))
+)
+preds_exer_gaus <- predict(m_loc_exer_sleep_gaus, newdata = exer_newdata, se = TRUE)
+se_bands_exer_gaus <- cbind(preds_exer_gaus$fit + 2 * preds_exer_gaus$se.fit, preds_exer_gaus$fit - 2 * preds_exer_gaus$se.fit)
+
+m_loess_exer <- loess(Sleep.efficiency ~ Exercise.frequency,
+                      span = 0.35, 
+                      degree = 0,  # Estimatore di Nadaraya-Watson
+                      data = datajitt)
+preds_loess_exer <- predict(m_loess_exer, newdata = exer_newdata, se = TRUE)
+se_bands_loess_exer <- cbind(preds_loess_exer$fit + 2 * preds_loess_exer$se.fit, preds_loess_exer$fit - 2 * preds_loess_exer$se.fit)
+
+with(datajitt,
+     plot(Exercise.frequency, Sleep.efficiency, 
+          cex = 0.5,
+          col = "gray35",
+          main = "Exercise Frequency vs Sleep Efficiency",
+          xlab = "Exercise Frequency",
+          ylab = "Sleep Efficiency"
+     )
+)
+lines(exer_newdata$Exercise.frequency, preds_exer_gaus$fit, lwd = 2, col = "red4", lty = 1)
+matlines(exer_newdata$Exercise.frequency, se_bands_exer_gaus, lwd = 1, col = "red4", lty = 3)
+lines(exer_newdata$Exercise.frequency, preds_loess_exer$fit, lwd = 2, col = "orangered", lty = 1)
+matlines(exer_newdata$Exercise.frequency, se_bands_loess_exer, lwd = 1, col = "orangered", lty = 3)
+legend("topleft", 
+       legend = c("Gaussian Kernel", "LOESS"), 
+       col = c("red4", "orangered"), 
+       lty = c(1, 1), 
+       lwd = 2, 
+       title = "Methods",
+       bty = "n"
+)
+```
+
+
+```{r}
+
+```
+
 ##### bootstrap regression
 
 ```{r}
-sleepdata<-dplyr::select(data, Age, Gender)
+sleepdata <- dplyr::select(data, Age, Gender)
 rm(sleepdata)
+
 names(data)
 Y <- data$Sleep.efficiency
-names(data)
-Y <- datastd$Sleep.efficiency
-x1 <- datastd$Sleep.duration
-x2 <- datastd$Bedtime
-x3 <- datastd$Age
-x4 <- datastd$Caffeine.consumption
-x5 <- datastd$Exercise.frequency
-x6 <- datastd$Alcohol.consumption
-x7 <- datastd$Deep.sleep.percentage
-x8 <- datastd$Awakenings
-x9 <- datastd$REM.sleep.percentage
-x10 <- datastd$Smoking.status
+x1 <- data$Slaeep.duration
+x2 <- data$Bedtime
+x3 <- data$Age
+x4 <- data$Caffeine.consumption
+x5 <- data$Exercise.frequency
+x6 <- data$Alcohol.consumption
+x7 <- data$Deep.sleep.percentage
+x8 <- data$Awakenings
+x9 <- data$REM.sleep.percentage
+x10 <- data$Smoking.status
+
 model <- lm(Y ~ x1+x2+x3+x5+x7+x6+x10)
 summary(model)
 model <- lm(Y ~ x3+x5+x7+x6+x10)
 summary(model)
 model <- lm(Y ~ x3+x5+x7+x6+x10)
 summary(model)
+
+datajitt <- data %>%
+  mutate(across(c(6, 12, 13, 15), ~  pmax(0,
+                                          jitter(as.numeric(.), length(levels(as.factor(.))))
+                                          )
+                ))
+
 griglia <- seq(0, 1)
 griglia <- seq(0, 2500)
 data$Sleep.efficiency
@@ -94,9 +811,6 @@ plot(age, circumference, main = "Fitted curve vs data",
 xlim = c(0, 2500), ylim = c(20, 200))
 lines(age_fine, circumference_fine, col = "red")
 abline(h = L.obs, lty = 2)
-abline(h = CI.RP.L)
 abline(h = CI.RP.L)
-lines(age_fine, circumference_fine, col = "red")
-
+lines
 ```
-
