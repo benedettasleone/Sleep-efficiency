@@ -3,17 +3,705 @@ title: "Latent"
 date: "2025-01-04"
 output: html_document
 ---
+-> togliere outliers
+-> filtrare a priori
+-> jitter per caffeina ecc?
 
 
+ funzioni, eseguire e basta ---------------------------------------------------------------- avvia qui sotto ||
 ```{r}
-install.packages("mclust")
+
+
+estimate_profiles_mclust <- function(df, n_profiles, model_numbers, select_vars, ...){
+    df_full <- df
+    df <- df[, select_vars, drop = FALSE]
+    arg_list <- match.call()
+    warnings <- NULL
+    no_na_rows <- !apply(df, 1, anyNA)
+    if(any(!no_na_rows)){
+        warning("The mclust algorithm does not allow for missing data. Some rows were omitted from analysis. Consider using Mplus, which accounts for cases with partially missing data, or use a non-parametric single imputation technique prior to analysis, such as the R-package 'missForest'.\n")
+    }
+    full_data <- df[no_na_rows, , drop = FALSE]
+    boot_model_names <- get_modelname(model_numbers)
+    if(ncol(full_data) == 1){
+        boot_model_names <- substr(boot_model_names, 1, 1)
+    }
+    run_models <- expand.grid(prof = n_profiles, mod = model_numbers)
+
+    # Collect arguments and prepare them for different functions --------------
+    dots <- list(...)
+
+    # Arguments for mclustBootstrapLRT ----------------------------------------
+    Args_boot <- dots[which(names(dots) %in% c("nboot", "level", "maxG", "verbose", "prior", "control", "initialization"))]
+    Args_boot[["maxG"]] <- max(n_profiles)
+    Args_boot[["data"]] <- full_data
+    if(is.null(Args_boot[["nboot"]])) Args_boot[["nboot"]] <- 100
+    if(is.null(Args_boot[["verbose"]])) Args_boot[["verbose"]] <- FALSE
+
+    boot_blrt <- lapply(boot_model_names, function(mod_name){
+        Args_boot[["modelName"]] <- mod_name
+        tryCatch({
+            do.call(mclustBootstrapLRT, Args_boot)
+        }, error = function(e) {
+            return(list(obs = rep(NA, max(n_profiles)),
+                        p.value = rep(NA, max(n_profiles))))
+        })
+    })
+
+    # Arguments for Mclust ----------------------------------------------------
+    Args_mclust <- dots[which(names(dots) %in% c("prior", "control", "initialization", "warn", "verbose"))]
+    Args_mclust[["data"]] <- full_data
+    if(is.null(Args_mclust[["verbose"]])) Args_mclust[["verbose"]] <- FALSE
+    if(is.null(Args_mclust[["warn"]])) Args_mclust[["warn"]] <- FALSE
+
+    out_list <- mapply(FUN = function(this_class, this_model){
+        Args_mclust[["G"]] <- this_class  # Do in function
+        Args_mclust[["modelName"]] <- if(ncol(full_data) == 1){
+            substr(get_modelname(this_model), 1, 1)
+        } else {
+                get_modelname(this_model)
+        }
+        out <- list(model = do.call(Mclust, Args_mclust))
+        if(is.null(out$model)){
+            warning("Mclust could not estimate model ", this_model, " with ", this_class, " classes.", call. = FALSE)
+            out$model$mclustBootstrap <- out$model$LRTS <- out$model$LRTS_p <- out$estimates <- out$dff <- NULL
+            out$fit <- c(Model = this_model, Classes = this_class, rep(NA, 16))
+            warnings <- c(warnings, paste0("Mclust could not estimate model ", this_model, " with ", this_class, " classes."))
+        } else {
+            Args_mclustbootstrap <- dots[which(names(dots) %in% c("nboot", "type", "max.nonfit", "verbose"))]
+            Args_mclustbootstrap[["object"]] <- out$model
+            if(is.null(Args_mclustbootstrap[["nboot"]])) Args_mclustbootstrap[["nboot"]] <- 100
+            if(is.null(Args_mclustbootstrap[["verbose"]])) Args_mclustbootstrap[["verbose"]] <- FALSE
+            if(is.null(Args_mclustbootstrap[["type"]])) Args_mclustbootstrap[["type"]] <- "bs"
+            out$model$mclustBootstrap <- do.call(MclustBootstrap, Args_mclustbootstrap)
+            out$model$LRTS <- ifelse(this_class == 1, NA, boot_blrt[[which(model_numbers == this_model)]]$obs[this_class-1])
+            out$model$LRTS_p <- ifelse(this_class == 1, NA, boot_blrt[[which(model_numbers == this_model)]]$p.value[this_class-1])
+            out$fit <- c(Model = this_model, Classes = this_class, calc_fitindices(out$model))
+            estimates <- estimates(out$model)
+            estimates$Model <- this_model
+            estimates$Classes <- this_class
+            if(this_class == 1){
+                estimates$se[estimates$Category == "Means"] <- estimates$Estimate[estimates$Category == "Variances"]/out$model$n
+                estimates$se[estimates$Category == "Variances"] <- sapply(sqrt(estimates$Estimate[estimates$Category == "Variances"]),
+                                                                          se_s, n = out$model$n)^2
+                estimates$p <- stats::pnorm(abs(estimates$Estimate), sd = estimates$se, lower.tail = FALSE)
+            }
+            out$estimates <- estimates
+            outdat <- cbind(out$model$z, out$model$classification)
+            dff <- matrix(NA, dim(df)[1], dim(outdat)[2])
+            dff[no_na_rows, ] <- outdat
+            colnames(dff) <- c(paste0("CPROB", 1:ncol(out$model$z)), "Class")
+            out$dff <- as_tibble(cbind(df_full, dff))
+            out$dff$model_number <- this_model
+            out$dff$classes_number <- this_class
+            out$dff <- out$dff[, c((ncol(out$dff)-1), ncol(out$dff), 1:(ncol(out$dff)-2))]
+            attr(out$dff, "selected") <- names(df)
+            # Set warnings
+            if(out$fit[["prob_min"]]< .001) warnings <- c(warnings, "Some classes were not assigned any cases with more than .1% probability. Consequently, these solutions are effectively identical to a solution with one class less.")
+            if(out$fit[["n_min"]] < .01) warnings <- c(warnings, "Less than 1% of cases were assigned to one of the profiles. Interpret this solution with caution and consider other models.")
+
+        }
+        out$warnings <- warnings
+        class(out) <- c("tidyProfile.mclust", "tidyProfile", "list")
+        out
+    }, this_class = run_models$prof, this_model = run_models$mod, SIMPLIFY = FALSE)
+
+    names(out_list) <- paste("model_", run_models$mod, "_class_", run_models$prof, sep = "")
+    out_list
+}
+get_title <- function(number){
+    c(
+        "Equal variances and covariances fixed to zero (model 1)",
+        "Varying variances and covariances fixed to zero (model 2)",
+        "Equal variances and equal covariances (model 3)",
+        "Varying variances and equal covariances (model 4)",
+        "Equal variances and varying covariances (model 5)",
+        "Varying variances and varying covariances (model 6)"
+    )[number]
+}
+get_modelname <- function(number){
+    if(any(number %in% c(4, 5))) stop("Mclust does not allow for models with ", paste(tolower(get_title(number[which(number %in% c(4, 5))])), collapse = ", or "),".", call. = FALSE)
+    c("EEI", "VVI", "EEE", "4", "5", "VVV")[number]
+}
+get_model_number <- function(variances, covariances){
+    ((which(c("zero", "equal", "varying") == covariances)-1)*2)+which(c("equal", "varying") == variances)
+}
+calc_fitindices <- function(model, fitindices){
+    # CAIC and BIC are much better than AIC, and slightly better than aBIC: https://www.statmodel.com/download/LCA_tech11_nylund_v83.pdf
+    if(inherits(model, "Mclust")){
+        ll <- model$loglik
+        parameters <- model$df
+        n <- model$n
+        post_prob <- model$z
+        class <- model$classification
+        class_tab <- table(model$classification)
+        if(length(class_tab) == ncol(post_prob)){
+          prop_n <- range(prop.table(class_tab))
+        } else {
+          prop_n <- c(0, max(prop.table(class_tab)))
+        }
+        fits <- c(ifelse(ncol(post_prob) == 1, 1, 1 + (1/(nrow(post_prob)*log(ncol(post_prob))))*(sum(rowSums(post_prob * log(post_prob+1e-12))))),
+                 range(diag(classification_probs_mostlikely(post_prob, class))),
+                 prop_n,
+                 model$LRTS,
+                 model$LRTS_p
+        )
+    } else {
+        ll <- model$summaries$LL
+        parameters <- model$summaries$Parameters
+        n <- model$summaries$Observations
+        fits <- c(ifelse(is.null(model$summaries$Entropy), 1, model$summaries$Entropy),
+                 tryCatch(range(diag(model$class_counts$classificationProbs.mostLikely)),
+                          warning = function(x) {
+                              c(NA, NA)
+                              }),
+                 range(model$class_counts$mostLikely$proportion),
+                 ifelse(is.null(model$summaries$BLRT_2xLLDiff), NA, model$summaries$BLRT_2xLLDiff),
+                 ifelse(is.null(model$summaries$BLRT_PValue), NA, model$summaries$BLRT_PValue)
+        )
+    }
+    fits <- c(
+      LogLik = ll,
+      AIC = -2*ll + 2*parameters,
+      AWE = -2*(ll + fits[1]) + 2*parameters*(3/2 + log(n)),
+      BIC = -2*ll + parameters * log(n),
+      CAIC = -2*ll + parameters * (log(n)+1),
+      CLC = -2*ll + 2*fits[1],
+      KIC = -2*ll + 3*(parameters + 1),
+      SABIC = -2*ll + parameters * log(((n+2)/24)),
+      ICL = icl(model),
+      fits
+    )
+    names(fits) <- c("LogLik", "AIC", "AWE", "BIC", "CAIC", "CLC", "KIC", "SABIC", "ICL", "Entropy", "prob_min", "prob_max", "n_min", "n_max", "BLRT_val", "BLRT_p")
+    fits
+}
+classification_probs_mostlikely <- function(post_prob, class){
+    if(is.null(dim(post_prob))) return(1)
+    avg_probs <- avgprobs_mostlikely(post_prob, class)
+    avg_probs[is.na(avg_probs)] <- 0
+    C <- dim(post_prob)[2]
+    N <- sapply(1:C, function(x) sum(class == x))
+    tab <- mapply(function(this_row, this_col){
+        (avg_probs[this_row, this_col]*N[this_row])/(sum(avg_probs[ , this_col] * N, na.rm = TRUE))
+    }, this_row = rep(1:C, C), this_col = rep(1:C, each = C))
+
+    matrix(tab, C, C, byrow = TRUE)
+}
+avgprobs_mostlikely <- function(post_prob, class){
+    if(is.null(dim(post_prob))) return(1)
+    t(sapply(1:ncol(post_prob), function(i){colMeans(post_prob[class == i, , drop = FALSE])}))
+}
+colSD <- function(x){ sqrt(diag(stats::cov(x))) }
+estimates <- function(model, ...){
+    UseMethod("estimates")
+}
+estimates.mplus.model <- function(model){
+  # Select means, variances, covariances of class-specific parameters; drop est_se
+    df <- suppressWarnings(subset(model$parameters[["unstandardized"]], grepl("(^Means$|^Intercepts$|^Variances$|\\.WITH$)", model$parameters[["unstandardized"]]$paramHeader) & !is.na(as.numeric(model$parameters[["unstandardized"]]$LatentClass)), select = -5))
+    # Extract original variable names
+
+    varnames <- strsplit(model$input$variable$names, " ")[[1]]
+    # Match original var names to names in $param column
+    param_match <- sapply(df$param, pmatch, toupper(varnames))
+    # Replace names in $param column
+    df$param[!is.na(param_match)] <- varnames[param_match[!is.na(param_match)]]
+    # Match original var names to names in $paramHeader column (remove any suffixes starting with ., like .WITH)
+    param_match <- sapply(gsub("\\..*$", "", df$paramHeader), pmatch, toupper(varnames))
+    # Replace these one at a time (necessary because of .WITH etc)
+    for(i in 1:length(param_match)){
+      if(is.na(param_match[i])) next
+      df$paramHeader[i] <- gsub(names(param_match)[i], varnames[param_match[i]], df$paramHeader[i])
+    }
+    df <- subset(df, df$param %in% varnames)
+    if(is.null(df)){return(NULL)}
+    covariances <- grepl(".WITH$", df$paramHeader)
+    df$param[covariances] <- paste(df$paramHeader[covariances], df$param[covariances], sep = ".")
+    df$paramHeader[covariances] <- "Covariances"
+    df$LatentClass <- as.integer(df$LatentClass)
+    names(df) <- c("Category", "Parameter", "Estimate", "se", "p", "Class")
+    df[!df$p == 999, ]
+}
+estimates.Mclust <- function(model){
+    ses_mean <- apply(model$mclustBootstrap$mean, 3, colSD)
+    ses_var <- apply(model$mclustBootstrap$variance, 4, function(x) {
+        apply(x, 3, colSD)
+    })
+
+    var <- model$parameters$variance$sigma
+    means <- model$parameters$mean
+
+    if(!is.null(dim(means))){
+        var_row <- paste(t(apply(var, 1, rownames))) # Get the rownames of var
+        var_col <- paste(apply(var, 1, rownames)) # Colnames are transposed rownames
+        covariances <- var_row != var_col
+        var_col[covariances] <- paste(var_row[covariances], "WITH", var_col[covariances], sep = ".")
+        var_row[covariances] <- "Covariances"
+        var_row[!covariances] <- "Variances"
+        var <- apply(var, 3, rbind)
+    } else {
+        if(!length(var) == length(means)){
+            var <- rep(var, length(means))
+        }
+        var <- as.matrix(t(var))
+        var_row <- "Variances"
+        var_col <- colnames(model$data)[1]
+        means <- as.matrix(t(means))
+    }
+    n_class <- ncol(var)
+    var <- rbind(means, var)
+    var_row <- c(rep("Means", nrow(means)), var_row)
+    var_col <- c(rownames(means), var_col)
+    not_estimated <- rowSums(var) == 0
+    var <- as.vector(var)
+
+    se <- as.vector(rbind(ses_mean, ses_var))
+
+    df <- cbind(var_row, var_col, not_estimated)
+    df <- cbind(df[rep(1:nrow(df), times = n_class), ], var, se)
+    df <- df[!df[,3]=="TRUE", -3]
+    df <- data.frame(df, stringsAsFactors = FALSE)
+    df[, 3:4] <- lapply(df[, 3:4], as.numeric)
+    df$p_value <- 2*pnorm(abs(df$var)/df$se, lower.tail = FALSE)
+    df$Class <- rep(1:n_class, each = nrow(df)/n_class)
+    row.names(df) <- NULL
+    names(df) <- c("Category", "Parameter", "Estimate", "se", "p", "Class")
+    df[!(duplicated(df$Estimate) & df$Category == "Covariances"), ]
+
+}
+poms <- function(data){
+    nums <- sapply(data, is.numeric)
+    minscores <- sapply(data[, nums], min, na.rm=TRUE)
+    data[, nums] <- sweep(data[, nums], 2, minscores, `-`)
+    maxscores <- sapply(data[, nums], max, na.rm=TRUE)
+    data[, nums] <- sweep(data[, nums], 2, maxscores, `/`)
+    data
+}
+# Stirling's approximation for the SE of an SD
+se_s_stirling <- function(s, n){
+    s * sqrt(exp(1) * ((1-(1/n))^(n-1))-1)
+}
+# SE of an SD
+se_s <- function(s, n){
+    tryCatch({s * (gamma((n-1)/2)/gamma(n/2)) * sqrt(((n-1)/2)-(gamma(n/2)/gamma((n-1)/2))^2)},
+             warning = function(x){se_s_stirling(s, n)})
+}
+syntax_class_specific <- function(mn, parameters){
+    variances <- c("varying", "equal")[(mn%%2)+1]
+    covariances <- c("zero", "equal", "varying")[ceiling((mn/2))]
+
+    model_class_specific <- switch(variances,
+        "equal" = label_parameters(paste0(paste(
+            parameters, collapse = ";\n"
+        ), ";")),
+        "varying" = gsub("\\);", "{C}\\);",
+                         label_parameters(paste0(
+                             paste(parameters, collapse = ";  "), ";"
+                         )))
+    )
+    cor_syntax <- paste(syntax_cor(parameters, parameters), collapse = "\n")
+    cor_syntax <- switch(covariances,
+        "equal" = label_parameters(cor_syntax),
+        "varying" = gsub("\\);", "{C}\\);", label_parameters(cor_syntax)),
+        "zero" = gsub(";", "@0;", cor_syntax)
+    )
+
+paste(model_class_specific, cor_syntax, sep = "\n\n")
+}
+# AHP-based model selection -----------------------------------------------
+consistency_test <- function(m){
+    lambda_max <- max(Re(eigen(m)$values))
+    r <- dim(m)[1]
+    if(abs(lambda_max - r) < 1e-12){
+        return(TRUE)
+    } else {
+        CI <- (lambda_max - r)/(r-1)
+        RI <- mean(replicate(100, {
+            (max(Re(eigen(matrix(stats::runif(r*dim(m)[2]), ncol = r))$values))-r)/(r-1)
+        }))
+        CR <- CI/RI
+        if(CR < .1){
+            return(TRUE)
+        } else {
+            return(FALSE)
+        }
+    }
+}
+priority_vector <- function(m){
+    eig <- eigen(m)
+    ev <- Re(eig$vectors[, which.max(Re(eig$values))])
+    ev/sum(ev)
+}
+AHP <- function(fitindices, relative_importance = c(AIC = 0.2323, AWE = 0.1129, BIC = 0.2525, CLC = 0.0922, KIC = 0.3101)){
+    # Standardize
+    relative_importance <- relative_importance/sum(relative_importance)
+    fitindices <- fitindices[, names(relative_importance)]
+    dm <- 1/(fitindices*10e-3)
+    pc <- sapply(1:ncol(dm), function(x){dm[, x] %*% t(dm[, x])^-1}, simplify = "array")
+    col_sums <- apply(pc, 3, colSums)
+
+    if(any(!apply(pc, 3, consistency_test))){
+        warning("Decision matrix was inconsistent; do not trust AHP results. Manually inspect results to determine the correct number of classes. See Saaty, 1990. DOI:10.1016/0377-2217(90)90057-I")
+    }
+
+    rivs <- apply(pc, 3, priority_vector)
+
+    which.max(rivs %*% relative_importance)
+}
+# Model number ------------------------------------------------------------
+
+colSD <- function(x){ sqrt(diag(stats::cov(x))) }
+
+estimates <- function(model, ...){
+    UseMethod("estimates")
+}
+
+
+estimates.mplus.model <- function(model){
+  # Select means, variances, covariances of class-specific parameters; drop est_se
+    df <- suppressWarnings(subset(model$parameters[["unstandardized"]], grepl("(^Means$|^Intercepts$|^Variances$|\\.WITH$)", model$parameters[["unstandardized"]]$paramHeader) & !is.na(as.numeric(model$parameters[["unstandardized"]]$LatentClass)), select = -5))
+    # Extract original variable names
+
+    varnames <- strsplit(model$input$variable$names, " ")[[1]]
+    # Match original var names to names in $param column
+    param_match <- sapply(df$param, pmatch, toupper(varnames))
+    # Replace names in $param column
+    df$param[!is.na(param_match)] <- varnames[param_match[!is.na(param_match)]]
+    # Match original var names to names in $paramHeader column (remove any suffixes starting with ., like .WITH)
+    param_match <- sapply(gsub("\\..*$", "", df$paramHeader), pmatch, toupper(varnames))
+    # Replace these one at a time (necessary because of .WITH etc)
+    for(i in 1:length(param_match)){
+      if(is.na(param_match[i])) next
+      df$paramHeader[i] <- gsub(names(param_match)[i], varnames[param_match[i]], df$paramHeader[i])
+    }
+    df <- subset(df, df$param %in% varnames)
+    if(is.null(df)){return(NULL)}
+    covariances <- grepl(".WITH$", df$paramHeader)
+    df$param[covariances] <- paste(df$paramHeader[covariances], df$param[covariances], sep = ".")
+    df$paramHeader[covariances] <- "Covariances"
+    df$LatentClass <- as.integer(df$LatentClass)
+    names(df) <- c("Category", "Parameter", "Estimate", "se", "p", "Class")
+    df[!df$p == 999, ]
+}
+
+
+library("tibble")
+```
+
+Librerie 
+```{r}
 library(mclust)
+library(tidyverse)
+library(tidyLPA)
+library(naniar)
+library(haven)
+library(glue)
+library(MplusAutomation)
+library(rhdf5)
+library(here)
+library(janitor)
+library(gt)
+library(dplyr)
 ```
 
 
+Latent Profile Analysis
+```{r}
+set.seed(1524)
+datajitt <- data %>%
+  mutate(across(c(6, 11, 12, 13, 14, 15), ~  pmax(0,jitter(as.numeric(.), length(levels(as.factor(.))),0)) ))
+
+data1<-datajitt
+names(data1) <- gsub("\\.", "_", names(data1))
+
+data1[,-c(1,3,14,16)]<-scale(data1[,-c(1,3,14,16)])# per scalare comandi scale() oppure poms()
+```
+
+
+
+4gruppi, lifestyle variables + age - sol. non ottimale
+```{r}
+prof1<-data1 %>% 
+  select(Age, Alcohol_consumption, Caffeine_consumption, Exercise_frequency) %>% 
+  scale() %>% 
+  estimate_profiles(2:5, models=c(1,2,3,6))
+
+compare_solutions(prof1, statistics = c("AIC", "BIC"))
+plot_profiles(prof1, rawdata=FALSE)
+k<-15
+plot_profiles(prof1[[k]], rawdata=FALSE, add_line = TRUE)
+plot_density(prof1[[k]])
+
+# Estrai la tabella con i dati e le assegnazioni alle classi
+dati_classi <- prof1[[k]]$dff
+# Ottieni gli indici delle osservazioni per ciascuna classe
+g1 <- which(dati_classi$Class == 1)
+g2 <- which(dati_classi$Class == 2)
+g3 <- which(dati_classi$Class == 3)
+g4 <- which(dati_classi$Class == 4)
+
+```
+
+
+3 gruppi, solo lifestyle variables
+```{r}
+prof2 <- estimate_profiles(data1[, c("Caffeine_consumption", "Alcohol_consumption",  "Exercise_frequency")], 2:4, models = c(1,2,3,6))
+
+
+compare_solutions(prof2, statistics = c("AIC", "BIC"))
+plot_profiles(prof2, rawdata=TRUE, add_line = TRUE)
+k<-11
+plot_profiles(prof2[[k]],rawdata=TRUE,add_line = TRUE, alpha_rawdata = 100, size_rawdata = 15, size_bw = 13)+ 
+  ggplot2::coord_cartesian(ylim = c(-1.5, 2.5))  + 
+  ggplot2::labs(title = "Latent Profiles", 
+                x = "Lifestyle factors", 
+                y = " ") 
+
+plot_density(prof2[[k]])
+prof2[[k]]
+
+# Estrai la tabella con i dati e le assegnazioni alle classi
+dati_classi <- prof2[[k]]$dff
+# Ottieni gli indici delle osservazioni per ciascuna classe
+g1 <- which(dati_classi$Class == 1)
+g2 <- which(dati_classi$Class == 2)
+g3 <- which(dati_classi$Class == 3)
+```
+
+
+
+
+
+### G1 lifestyle migliore ovvero poco alcohol poco caffe e molto esercizio
+### G2 lifestyle medio ovvero molto alcohol molto caffe e medio esercizio
+### G3 lifestyle basso ovvero poco alcohol molto caffe e poco esercizio
+```{r}
+library(ggplot2)
+
+datajitt$Group <- NA
+datajitt$Group[g1] <- "g1"
+datajitt$Group[g2] <- "g2"
+datajitt$Group[g3] <- "g3"
+```
+
+
+
+### Sleep efficiency vs Age senza Gender in un unico grafico
+```{r}
+mod_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g1, ])
+mod_g2 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g2, ])
+mod_g3 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g3, ])
+
+new_data <- data.frame(Age = seq(min(datajitt$Age), max(datajitt$Age), length.out = 100))
+
+new_data$g1 <- predict(mod_g1, newdata=new_data)
+new_data$g2 <- predict(mod_g2, newdata=new_data)
+new_data$g3 <- predict(mod_g3, newdata=new_data)
+
+new_data_long <- new_data %>%
+  tidyr::pivot_longer(cols = c(g1, g2, g3), names_to = "Group", values_to = "Prediction")
+
+ggplot(datajitt, aes(x = Age, y = Sleep.efficiency, color=Group)) +
+  geom_point(alpha = 0.6) + 
+  geom_line(data = new_data_long, aes(x = Age, y = Prediction, color = Group), size = 1)+
+  labs(title = "Regression Sleep efficiency vs Age",
+       x = "Age",
+       y = "Sleep efficiency",
+       color = "Group") +
+  scale_color_manual(values = c("g1" = "red", "g2" = "blue", "g3" = "green")) +
+  theme_minimal()
+```
+
+
+# Quantile regression
+```{r}
+library(quantreg)
+modq_g1 <- summary(rq(Sleep.efficiency ~ bs(Age, degree=3), tau = 10:95/100, data = datajitt[g1, ]))
+modq_g2 <- summary(rq(Sleep.efficiency ~ bs(Age, degree=3), tau = 10:95/100, data = datajitt[g2, ]))
+modq_g3 <- summary(rq(Sleep.efficiency ~ bs(Age, degree=3), tau = 10:90/100, data = datajitt[g3, ]))
+
+plot(modq_g1,mfrow = c(1,2))
+plot(modq_g2,mfrow = c(1,2))
+plot(modq_g3,mfrow = c(1,2))
+```
+
+
+
+
+
+
+
+
+
+
+
+# questi con le variabili del sonno non hanno molto senso, alla fine danno le percentuali al contrario e il legame ovvio con sleep efficiency
+```{r}
+prof2<-data1 %>% select(Age, Sleep_efficiency, Sleep_duration, Deep_sleep_percentage, REM_sleep_percentage) %>%
+  estimate_profiles(2:5, models=c(1,2,3,6))
+compare_solutions(prof2, statistics = c("AIC", "BIC"))
+plot_profiles(prof2, rawdata=FALSE)
+plot_profiles(prof2[[10]], rawdata=FALSE)
+plot_density(prof2[[10]])
+```
+
+```{r}
+prof2<-data1 %>% select(Age, Sleep_efficiency, Deep_sleep_percentage, REM_sleep_percentage) %>%
+  estimate_profiles(2:5, models=c(1,2,3,6))
+compare_solutions(prof2, statistics = c("AIC", "BIC"))
+plot_profiles(prof2, rawdata=FALSE)
+plot_profiles(prof2[[10]], rawdata=FALSE)
+plot_density(prof2[[10]])
+```
+
+```{r}
+prof2<-data1 %>% select(Sleep_duration, Sleep_efficiency, Deep_sleep_percentage, REM_sleep_percentage) %>%
+  estimate_profiles(2:6, models=c(1,2,3,6))
+compare_solutions(prof2, statistics = c("AIC", "BIC"))
+plot_profiles(prof2, rawdata=FALSE)
+plot_density(prof2[[12]])
+```
+
+
+# modelli misti
+6 profiles, poco interpretabile
+```{r}
+prof1<-data1 %>% select(Sleep_duration, Alcohol_consumption, Exercise_frequency, Deep_sleep_percentage, Caffeine_consumption) %>%
+  estimate_profiles(2:6, models=c(1,2,3,6))
+prof1
+compare_solutions(prof1, statistics = c("AIC", "BIC"))
+plot_profiles(prof1, rawdata=FALSE)
+plot_profiles(prof1[[10]], rawdata=FALSE)
+plot_density(prof1[[10]])
+```
+
+
+```{r}
+prof2<-data1 %>% select(Caffeine_consumption, Sleep_efficiency, Deep_sleep_percentage, REM_sleep_percentage) %>%
+  estimate_profiles(2:6, models=c(1,2,3,6))
+compare_solutions(prof2, statistics = c("AIC", "BIC"))
+plot_profiles(prof2, rawdata=FALSE)
+plot_profiles(prof2[[19]], rawdata=FALSE)
+plot_density(prof2[[19]])
+```
+
+
+```{r}
+prof2<-data1 %>% select(REM_sleep_percentage, Sleep_efficiency, Deep_sleep_percentage, Exercise_frequency, Age) %>%
+  estimate_profiles(2:6, models=c(1,2,3,6))
+compare_solutions(prof2, statistics = c("AIC", "BIC"))
+plot_profiles(prof2, rawdata=FALSE)
+plot_profiles(prof2[[19]], rawdata=FALSE)
+plot_density(prof2[[19]])
+```
+
+NON sempre funzionano MODELLI 2 E 6, QUELLI CON DIVERSE COVARIANZE!!!
+
+
+
+
+rivedere
+```{r}
+data1 %>%
+  dplyr::select(Age, Caffeine_consumption, Exercise_frequency, Deep_sleep_percentage) %>%
+    single_imputation() %>%
+    estimate_profiles(2:5, package= "MplusAutomation", variances="varying" ) %>%
+    plot_profiles(sd=FALSE)
+
+
+
+data1 %>%
+  dplyr::select(Age, Light_sleep_percentage, Alcohol_consumption, Caffeine_consumption, Exercise_frequency, Deep_sleep_percentage) %>%
+  single_imputation() %>%
+  estimate_profiles(1:5) %>%
+  plot_density()
+
+
+
+data1 %>%
+  select(Age, Light_sleep_percentage, Alcohol_consumption, Caffeine_consumption, Exercise_frequency, Deep_sleep_percentage) %>%
+  single_imputation() %>%
+  estimate_profiles(1:6) %>%
+  plot_profiles()
+  
+compare_solutions()
+
+# can use also get_data() and get_fit() functions
+# see at: https://data-edu.github.io/tidyLPA/
+
+
+lpa_models<-data1 %>%
+  select(Age, Light_sleep_percentage, Alcohol_consumption, Caffeine_consumption, Exercise_frequency, Deep_sleep_percentage) %>%
+  single_imputation() %>%
+ estimate_profiles(1:3,
+                      package = "MplusAutomation",
+                      ANALYSIS = "starts = 100, 20;",
+                      variances = c("equal", "varying"),
+                      covariances = c("zero", "varying"))
+
+get_fit(lpa_models)
+
+    
+```
+
+
+
+
+
+
+# Estimate profiles with mclust
+c'è anche funzione estimated_profiles_mclust, provare a testare, vedi help!
+```{r}
+# vedi file:///C:/Users/Sara/Downloads/LPA_in_R_v1.2.pdf
+data1<-datajitt
+mod_g1_9 <- Mclust(data1[,c(2,5,6,8,9,11,12,13)])
+# Opimal number of classes
+mod_g1_9$G
+mod_g1_9$modelName
+mod_g1_9$BIC
+
+table(summary(mod_g1_9)$classification)
+data1<-as.data.frame(scale(datajitt))
+colors=summary(mod_g1_9)$classification
+plot(c(2,5,6,8,9,11,12,13), data1[1,c(2,5,6,8,9,11,12,13)], col=colors[1], "l-")
+for (i in 1:452){
+  points(c(2,5,6,8,9,11,12,13), data1[i,c(2,5,6,8,9,11,12,13)], col=colors[i], "l-")
+}
+
+```
+
+
+
+
+funziona eseguendo tutte le funzioni sopra, magari spostare in altro file
+```{r}
+estimate_profiles_mclust(data1, 1:4, 1:3)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+micol veriosne 1
 Dataset da considerare con variabili continue quindi tolgo smoke(binaria) e gender(categorica)
 ```{r}
-lpa_data=data[,c(-1,-3,-14,-16,-17)]
+lpa_data<-data[,c(-1,-3,-14,-16)]
 str(lpa_data)
 
 ```
