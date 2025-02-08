@@ -1,91 +1,73 @@
-##### NON PARAMETRIC INFERENCE
-
-Analisi dei sottogruppi (maschi-femmine; fasce di età)
-ddplot per confrontare distribuzioni anche bootstrap
-caso univariato e multivariato
-
+#### NON PARAMETRIC INFERENCE
 
 ##### Setting B and seed
-
 ```{r}
-# seed e B
 seed <- 482990
 B <- 5000
 ```
 
 ##### Mann Whitney Univariate
-
 ```{r}
 mann_whitney_analysis <- function(data, variabile, split_variable, split_criteria) {
-  # Filtra i dati in base ai criteri di suddivisione
   data1 <- data %>% filter(!!sym(split_variable) == split_criteria[1])
   data2 <- data %>% filter(!!sym(split_variable) == split_criteria[2])
-  
-  # Estrai i dati per la variabile specificata
   x1 <- data1[[variabile]]
   x2 <- data2[[variabile]]
   
-  # Calcola il massimo della densità per confrontare istogrammi
- # max_density <- max(    hist(x1, plot = FALSE)$density,     hist(x2, plot = FALSE)$density)
+  # Compute maximum to compare hystograms
+ max_density <- max(    hist(x1, plot = FALSE)$density,     hist(x2, plot = FALSE)$density)
   
   # Istogrammi
-#  par(mfrow = c(1, 2))
-#  hist(x1,        main = paste(variabile, split_criteria[1]),        prob = T, 
-#       col = "pink",        ylim = c(0, max_density)) 
-# hist(x2,        main = paste(variabile, split_criteria[2]),        prob = T, 
-#       col = "blue",        ylim = c(0, max_density))
+  par(mfrow = c(1, 2))
+  hist(x1,        main = paste(variabile, split_criteria[1]),        prob = T, 
+       col = "pink",        ylim = c(0, max_density)) 
+ hist(x2,        main = paste(variabile, split_criteria[2]),        prob = T, 
+       col = "blue",        ylim = c(0, max_density))
   
-  # Preparazione dei dati per il DD-Plot
   t1 <- as.data.frame(x1)
   colnames(t1) <- variabile
   t2 <- as.data.frame(x2)
   colnames(t2) <- variabile
   
-  # Generazione del DD-Plot
+  # DD-Plot
   ddp<-ddPlot(x = t1, y = t2, depth_params = list(method = 'Tukey'))
   print(ddp)
   
-  # Test di Mann-Whitney
+  # Mann-Whitney Test
   alpha <- 0.05
   mann_whitney_test <- wilcox.test(x1, x2, paired = FALSE, conf.level = 1 - alpha)
   p_value <- mann_whitney_test$p.value
   
-  # Stampare il risultato del test
+  # Test results
   cat("Mann-Whitney Test Results for", variabile, "between", 
       split_criteria[1], "and", split_criteria[2], "\n")
   print(mann_whitney_test)
   
-  # Ritorna p-value
   return(p_value)
 }
 ```
 
 
-###### Uomini vs donne
-
+###### - Gender
 ```{r}
 shapiro.test(filter(data,Gender=="Female")$Sleep.efficiency)
 qqnorm(filter(data,Gender=="Female")$Sleep.efficiency)
 ```
-
+not normal
 
 ###### - Sleep efficiency
 ```{r}
 mann_whitney_analysis(data = data, variabile = "Sleep.efficiency", 
   split_variable = "Gender", split_criteria = c("Female", "Male"))
 ```
-alto pvalue, quindi no differenza delle due distribuzioni
-
-
+high pvalue (0.691607), no difference in distribution
 
 ###### - Sleep duration
 ```{r}
 mann_whitney_analysis(data = data, variabile = "Sleep.duration", 
   split_variable = "Gender", split_criteria = c("Female", "Male")) 
 ```
-
-
-alto, quindi no differenza delle due distribuzioni
+high pvalue (0.423791), no difference in distribution
 
 
 ###### - Awakenings
@@ -93,56 +75,49 @@ alto, quindi no differenza delle due distribuzioni
 mann_whitney_analysis(data = data, variabile = "Awakenings", 
   split_variable = "Gender", split_criteria = c("Female", "Male")) 
 ```
-alto, quindi no differenza delle due distribuzioni
+pvalue=0.07668181, no difference in distribution
 
+
+###### Young vs older people
 ```{r}
-# Aggiungi una colonna "young" al dataset
 data <- data %>%
   mutate(young = ifelse(Age < 45, "Giovani", "Vecchi"))
 
-```
-
-
-
-###### Giovani vs anziani
-
-```{r}
 shapiro.test(filter(data,Age<45)$Sleep.efficiency)
 qqnorm(filter(data,Age<45)$Sleep.efficiency)
 ```
-
+not normal
 
 ###### - Sleep efficiency
-
 ```{r}
 mann_whitney_analysis(data = data, variabile = "Sleep.efficiency", 
   split_variable = "young", split_criteria = c("Giovani", "Vecchi")) 
 ```
-pvalue 0.1
-
+pvalue=0.1079899
 
 ###### - Sleep duration
 ```{r}
 mann_whitney_analysis(data = data, variabile = "Sleep.duration", 
   split_variable = "young", split_criteria = c("Giovani", "Vecchi"))
 ```
-pvalue 0.06
+pvalue 0.06516022
 
 
 
 
-###### Fumo VS Nonfumo
+###### Smokers VS Nonsmokers
 ```{r}
 shapiro.test(filter(data,Smoking.status=="0")$Sleep.efficiency)
 qqnorm(filter(data,Smoking.status=="0")$Sleep.efficiency)
 ```
+not normal
 
 ###### - Sleep efficiency
 ```{r}
 mann_whitney_analysis(data = data, variabile = "Sleep.efficiency", 
   split_variable = "Smoking.status", split_criteria = c("0", "1")) 
 ```
-pvalue molto basso
+pvalue=5.954699e-07
 
 
 ###### - Sleep duration
@@ -151,11 +126,11 @@ mann_whitney_analysis(
   data = data, variabile = "Sleep.duration", 
   split_variable = "Smoking.status", split_criteria = c("0", "1")) 
 ```
-pvalue alto
+pvalue=0.5539101
 
 
 
-###### Caffe VS Nocaffe
+###### High vs low caffeine
 ```{r}
 data <- data %>%
   mutate(caffe = ifelse(Caffeine.consumption < 26, "nocaffe", "yescaffe"))
@@ -168,7 +143,7 @@ mann_whitney_analysis(
   data = data, variabile = "Sleep.duration", 
   split_variable = "caffe", split_criteria = c("nocaffe", "yescaffe"))
 ```
-pvalue 0.28
+pvalue=0.2778851
 
 
 ###### - Deep sleep percentage
@@ -182,66 +157,51 @@ pvalue 0.06
 
 
 ##### Permutational Multivariate Test (PMT)
-Usare questa funzione con dati standardizzati!
+Use this function with standardized data!
 ```{r}
 permutation_test <- function(data, variables, split_variable, split_criteria, B , seed) {
-  # Verifica se split_criteria è un valore numerico o una condizione logica
   if (length(split_criteria) == 1 && grepl("<|>|=", split_criteria)) {
-    # Se split_criteria è una condizione logica, applicala come filtro
     condition <- paste0(split_variable, split_criteria)
     data1 <- dplyr::filter(data, eval(parse(text = condition))) %>%
       dplyr::select(all_of(variables))
     
-    # Calcolare l'altro gruppo come complementare alla condizione
     opposite_condition <- paste0("!", condition)
     data2 <- dplyr::filter(data, eval(parse(text = opposite_condition))) %>%
       dplyr::select(all_of(variables))
   } else {
-    # Se split_criteria è una variabile categorica, utilizza i livelli come in precedenza
     data1 <- dplyr::filter(data, !!sym(split_variable) == split_criteria[1]) %>%
       dplyr::select(all_of(variables))
     data2 <- dplyr::filter(data, !!sym(split_variable) == split_criteria[2]) %>%
       dplyr::select(all_of(variables))
   }
   
-  # Calcolare la dimensione dei gruppi
   n1 <- nrow(data1)
   n2 <- nrow(data2)
   n <- n1 + n2
   
-  # Calcolare la statistica T2 originale per i dati non permutati
   mean1 <- colMeans(data1)
   mean2 <- colMeans(data2)
   T20 <- as.numeric(t(mean1 - mean2) %*% (mean1 - mean2))
   
-  # Inizializzare il vettore per la distribuzione permutazionale
   T2 <- numeric(B)
-  
-  # Impostare il seme per la riproducibilità
   set.seed(seed)
   
-  # Permutazioni
+  # Permutations
   for (perm in 1:B) {
-    # Combinare i dati di entrambi i gruppi
     combined <- rbind(data1, data2)
-    # Generare una permutazione casuale degli indici
     permutation <- sample(n)
-    # Applicare la permutazione ai dati
     permuted <- combined[permutation, ]
-    # Suddividere i dati permutati nei due gruppi
     perm_data1 <- permuted[1:n1, ]
     perm_data2 <- permuted[(n1 + 1):n, ]
     
-    # Calcolare la statistica T2 per i dati permutati
     mean1_perm <- colMeans(perm_data1)
     mean2_perm <- colMeans(perm_data2)
     T2[perm] <- t(mean1_perm - mean2_perm) %*% (mean1_perm - mean2_perm)
   }
   
-  # Grafici
+  # Graphs
   par(mfrow = c(1, 2))
   
-  # Istogramma della distribuzione permutazionale
   hist(T2, xlim = range(c(T2, T20)), main = "Distribuzione permutazionale T2", xlab = "T2")
   abline(v = T20, col = "red", lwd = 2, lty = 2)
   
@@ -249,15 +209,14 @@ permutation_test <- function(data, variables, split_variable, split_criteria, B 
   plot(ecdf(T2), main = "ECDF della distribuzione permutazionale", xlab = "T2", ylab = "F(T2)")
   abline(v = T20, col = "red", lwd = 2, lty = 2)
   
-  # Calcolare il p-value
+  # p-value
   p_val <- sum(T2 >= T20) / B
   
-  # Risultati
   cat("Test permutazionale multivariato\n")
   cat("Statistica T20:", T20, "\n")
   cat("p-value:", p_val, "\n")
   
-  # Ritorna il p-value
+
   return(p_val)
 }
 ```
@@ -265,7 +224,7 @@ permutation_test <- function(data, variables, split_variable, split_criteria, B 
 
 
 
-###### Fumatori vs NonFumatori
+###### Smoking status
 
 ###### -> Sleep efficiency + Sleep duration + Awakenings
 ```{r}
@@ -274,14 +233,12 @@ permutation_test(data = datastd,
   split_variable = "Smoking.status", split_criteria = levels(data$Smoking.status),
   B = B, seed = seed)
 ```
-differenze nel sonno tra fumatori e nonfumatori
+differences in sleep between smokers and non-smokers
 
 
-###### Poco caffè vs Molto caffè
+###### High vs low caffeine intake
 
 ###### ->Sleep efficiency + Sleep duration + Awakenings
-divisione chi beve o beve poco e chi beve almeno una tazza
-
 ```{r}
 datastd$aux<-ifelse(data$Caffeine.consumption <=24, "inf", "sup")
 permutation_test(data = datastd,
@@ -292,7 +249,7 @@ permutation_test(data = datastd,
 0.41
 
 
-###### Giovani vs Vecchi
+###### Older vs younger people
 
 ###### -> Sleep efficiency + Sleep duration + Awakenings
 
@@ -306,7 +263,7 @@ permutation_test(data = datastd,
 0.0998
 
 
-##### Esercizio fisico vs no
+##### Exercise frequency
 ```{r}
 datastd$aux<-ifelse(data$Exercise.frequency==0, "inf", "sup")
 permutation_test(data = datastd,
@@ -314,10 +271,10 @@ permutation_test(data = datastd,
   split_variable = "aux", split_criteria = c("inf","sup"),
   B = B, seed = seed)
 ```
-0
 
 
-##### Alcohol vs no
+
+##### Alcohol assumption
 ```{r}
 datastd$aux<-ifelse(data$Alcohol.consumption==0, "inf", "sup")
 permutation_test(data = datastd,
@@ -325,11 +282,10 @@ permutation_test(data = datastd,
   split_variable = "aux", split_criteria = c("inf","sup"),
   B = B, seed = seed)
 ```
-0
 
 
 
-###### Uomini vs donne 
+###### Gender
 
 ###### -> Sleep efficiency + Sleep duration + Awakenings
 ```{r}
@@ -338,7 +294,7 @@ permutation_test(data = datastd,
   split_variable = "Gender", split_criteria = c("Female", "Male"),
   B = B, seed = seed)
 ```
-pvalue alto 0.26 quindi non c'è differenza
+pvalue 0.26 
 
 ###### -> Deep sleep percentage + Sleep duration + Awakenings
 ```{r}
@@ -350,7 +306,7 @@ permutation_test(data = datastd,
 p-value 0.09
 
 
-###### - Deep sleep percentage
+###### - Deep sleep percentage graphs
 ```{r}
 mann_whitney_analysis(data = datajitt, variabile = "Deep.sleep.percentage", 
   split_variable = "Gender", split_criteria = c("Female", "Male")) 
@@ -369,7 +325,6 @@ mann_whitney_analysis(data = datajitt, variabile = "Deep.sleep.percentage",
   split_variable = "young", split_criteria = c("Giovani", "Vecchi")) 
 ```
 
-
 ```{r}
 datajitt <- datajitt %>%
   mutate(exercise = ifelse(Exercise.frequency <=0, "noesercizio", "siesercizio"))
@@ -378,8 +333,6 @@ mann_whitney_analysis(data = datajitt, variabile = "Deep.sleep.percentage",
   split_variable = "exercise", split_criteria = c("noesercizio", "siesercizio")) 
 ```
 
-
-
 ```{r}
 datajitt <- datajitt %>%
   mutate(caffe = ifelse(Exercise.frequency <=25, "pococaffe", "moltocaffe"))
@@ -387,8 +340,6 @@ datajitt <- datajitt %>%
 mann_whitney_analysis(data = datajitt, variabile = "Deep.sleep.percentage", 
   split_variable = "caffe", split_criteria = c("pococaffe", "moltocaffe")) 
 ```
-
-
 
 
 ####ANOVA PERMUTATION
@@ -418,8 +369,8 @@ plot(ecdf(T_stat),xlim=c(-1,20))
 abline(v=T0,col=3,lwd=4)
 p_val <- sum(T_stat>=T0)/B
 p_val
-
 ```
+
 
 ```{r}
 exercise<-as.factor(data$Exercise.frequency)
@@ -493,10 +444,7 @@ T_smoke[perm] <- summary.aov(aov(effic.perm.H0smoke ~ data$Smoking.status + exer
 }
 sum(T_exerc >= T0_exerc)/B
 sum(T_smoke >= T0_smoke)/B
-
-
 ```
-
 
 
 
