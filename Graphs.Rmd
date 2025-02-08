@@ -1,0 +1,136 @@
+
+## Gender 
+```{r}
+table(data$Gender)
+data$AgeGroup <- cut(data$Age,
+                 breaks = seq(min(data$Age), max(data$Age), length.out = nclass.FD(data$Age)),                  include.lowest = T, right = T) 
+table(data$AgeGroup, data$Gender)
+boxplot(data$Age~data$Gender, col=c("pink", "blue"))
+```
+balanced subdivision, but different sizes in Age_group (e.g. males are older, only female kids)
+
+## Smoking status
+```{r}
+table(data$Smoking.status)
+table(data$AgeGroup, data$Smoking.status)
+boxplot(data$Age~data$Smoking.status)
+boxplot(data$Exercise.frequency~data$Smoking.status, col=c("white", "grey"))
+```
+smokers are ~1/3 of the population
+
+## Exercise frequency
+```{r}
+table(data$Exercise.frequency)
+table(data$AgeGroup, data$Exercise.frequency)
+boxplot(data$Age~data$Exercise.frequency)
+table(data$Gender, data$Exercise.frequency)
+boxplot(data$Exercise.frequency~data$Gender, col=c("pink", "blue"))
+```
+30-50 years old people is the most sporty; it seems that women are less sporty than men, but with higher frequencies
+
+## Caffeine consumption
+```{r}
+table(data$Caffeine.consumption)
+table(data$AgeGroup, data$Caffeine.consumption)
+table(data$Gender, data$Caffeine.consumption)
+boxplot(data$Age~data$Caffeine.consumption)
+boxplot(data$Caffeine.consumption~data$Gender)
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+plot(data$Caffeine.consumption, data$Age, col=colori)
+```
+
+## Alcohol consumption
+```{r}
+table(data$Alcohol.consumption)
+table(data$AgeGroup, data$Alcohol.consumption)
+table(data$Gender, data$Alcohol.consumption)
+boxplot(data$Age~data$Alcohol.consumption)
+boxplot(data$Alcohol.consumption~data$Gender)
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+plot(data$Alcohol.consumption, data$Age, col=colori)
+```
+less variability w.r.t. caffeine
+
+##### Preliminary graphs: boxplot, hystograms
+```{r}
+fboxplot <- function (variabile, categorica=NULL, data){
+  par(mfrow=c(1,1))
+  if (is.null(categorica)){
+    print(boxplot(data[[variabile]], main=variabile))
+  } else {
+    print(boxplot(data[[variabile]]~data[[categorica]], main=variabile, xlab=categorica, ylab=" "))
+  }
+}
+```
+
+```{r}
+fistogramma <- function (variabile, categorica=NULL, data){
+  if (is.null(categorica)){
+    par(mfrow=c(1,1))
+    print(hist(data[[variabile]], prob=TRUE, main=paste("istogramma di", variabile), xlab=" "))
+  } else {
+    m<-unique(data[[categorica]])
+    title= paste("istogramma di", variabile, "rispetto a ", categorica)
+    par(mfrow=c(1,length(m)))
+    for (i in 1:length(m))
+      print(hist(data[[variabile]][which(data[[categorica]]==m[i])], xlab= categorica))
+    
+  }
+}
+```
+
+
+Some boxplot/histograms
+```{r}
+boxplot(datastd)
+fboxplot("Age", data = data)
+fboxplot("Age", "Gender", data = data)
+fboxplot("Sleep.duration", "Gender", data)
+fboxplot("Sleep.duration", "AgeGroup", data)
+fistogramma("Sleep.duration", data = data)
+fistogramma("Age", "Gender",data=data)
+```
+
+
+##### Pairs: coupled graphs with categorical variable
+```{r}
+pairs(data[,numeric_cols])
+colori <- ifelse(data$Gender == "Male", "blue", "pink")
+pairs(data[,numeric_cols], col=colori)
+
+colori <- ifelse(data$Deep.sleep.percentage>41, "red", "green")
+pairs(data[,c(2,6:13,15:p)], col=c("red","green"))
+
+colori_gruppi <- rainbow(length(levels(data$AgeGroup)))
+colori <- colori_gruppi[as.numeric(data$AgeGroup)] 
+pairs(data[,numeric_cols], col=colori_gruppi)
+```
+
+##### Deep sleep vs Bedtime
+```{r}
+ggplot(data, aes(x = Bedtime, y = Deep.sleep.percentage)) +
+  geom_point(alpha = 0.6, color = "blue") + 
+  geom_smooth(method = "lm", color = "red", se = FALSE) + 
+  labs(
+    title = "Deep sleep vs Bedtime",
+    x = "Bedtime hour",
+    y = "Percentage of deep sleep"
+  ) +
+  theme_minimal()
+```
+It seems that as bedtime increases, deep sleep decreases
+
+##### Deep sleep vs Wakeup time
+```{r}
+ggplot(data, aes(x = Wakeup.time, y = Deep.sleep.percentage)) +
+  geom_point(alpha = 0.6, color = "green") +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(
+    title = " Deep sleep vs Wakeup time",
+    x = "Wakeup hour",
+    y = "Percentage of deep sleep"
+  ) +
+  theme_minimal()
+```
+It seems that as wakeup increases, deep sleep decreases (wakeup and bedtime are correlated)
+
