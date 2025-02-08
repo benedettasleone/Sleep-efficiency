@@ -1,0 +1,456 @@
+---
+title: "Conformal"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr) 
+library(ggplot2)
+library(knitr)
+library(broom)
+library(tidyr)
+library(progress)
+library(pbapply)
+pboptions(type='none')
+library(dbscan)
+library(gridExtra)
+library(roahd)
+library(conformalInference)
+library(mgcv)
+library(rgl)
+```
+
+```{r}
+table(data$Gender, data$Smoking.status)
+```
+
+
+###Conformal prediction on Sleep duration when gender= female and smoking=1 (61 osservazioni)
+```{r}
+dt <- data[data$Gender == "Female" & data$Smoking.status == 1, c(2,6,12,13,15)]
+```
+
+
+```{r}
+covariate_names <- c("Age", "Caffeine.consumption", "Alcohol.consumption", "Exercise.frequency")
+y <- dt$Sleep.duration
+x <- dt[, covariate_names]
+
+attach(dt)
+```
+
+```{r}
+median_Caffeine <- median(dt$Caffeine.consumption, na.rm = TRUE)
+median_Alcohol <- median(dt$Alcohol.consumption, na.rm = TRUE)
+median_Exercise <- median(dt$Exercise.frequency, na.rm = TRUE)
+
+# Age has different values
+age_grid <- seq(from = min(dt$Age, na.rm = TRUE), to = max(dt$Age, na.rm = TRUE), length.out = 100)
+
+# Test grid
+test_grid <- data.frame(
+  Age = age_grid,
+  Caffeine.consumption = rep(median_Caffeine, length(age_grid)),
+  Alcohol.consumption = rep(median_Alcohol, length(age_grid)),
+  Exercise.frequency = rep(median_Exercise, length(age_grid))
+)
+
+```
+
+```{r}
+model_gam <- gam(y ~ s(Age, bs = 'cr') + Caffeine.consumption + Alcohol.consumption + Exercise.frequency, data = dt)
+
+pred=predict(model_gam,newdata=test_grid)
+plot(age_grid,pred)
+```
+
+###Training function
+```{r}
+train_gam <- function(x, y, out = NULL) {
+  colnames(x) <- c('var1','var2','var3','var4')
+  train_data <- data.frame(y, x)
+  
+  # GAM model
+  model_gam <- gam(y ~ s(var1, bs = 'cr') + var2 + var3 + var4, data = train_data)
+}
+```
+
+###Prediction function
+```{r}
+predict_gam <- function(obj, new_x) {
+  new_x <- data.frame(new_x)
+  colnames(new_x) <- c('var1','var2','var3','var4')
+
+  predict.gam(obj, new_x)
+}
+```
+
+
+###Full conformal framework
+```{r}
+alpha <- 0.1
+
+result_full <- data.frame(Age = numeric(), Prediction = numeric(), Lower = numeric(), Upper = numeric())
+
+for(i in 1:nrow(test_grid)){
+  predictions <- conformal.pred(
+    x = cbind(Age,Caffeine.consumption,Alcohol.consumption,Exercise.frequency),
+    y = Sleep.duration,
+    x0 = c(age_grid[i],median_Caffeine,median_Alcohol,median_Exercise),
+    alpha = alpha,
+    verbose = FALSE,
+    train.fun = train_gam,
+    predict.fun = predict_gam,
+    num.grid.pts = 200
+  )
+  result_full <- rbind(result_full, data.frame(
+    Age = age_grid[i],
+    Prediction = predictions$pred,
+    Lower = predictions$lo,
+    Upper = predictions$up
+  ))
+}
+
+head(result_full)
+#saveRDS(result_full, "result_full_F1.rds")
+
+```
+
+
+```{r}
+ggplot(result_full, aes(x = Age, y = Prediction)) +
+  geom_line(color = "blue", size = 1) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "lightblue", alpha = 0.4) +
+  labs(title = "Sleep duration with Full Conformal Prediction",
+       x = "Age",
+       y = "Sleep duration") +
+  theme_minimal()
+```
+
+
+###Split conformal framework
+```{r}
+alpha <- 0.1
+
+result_split <- data.frame(Age = numeric(), Prediction = numeric(), Lower = numeric(), Upper = numeric())
+
+for(i in 1:nrow(test_grid)){
+  predictions <- conformal.pred.split(
+    x = cbind(Age,Caffeine.consumption,Alcohol.consumption,Exercise.frequency),
+    y = Sleep.duration,
+    x0 = c(age_grid[i],median_Caffeine,median_Alcohol,median_Exercise),
+    alpha = alpha,
+    verbose = FALSE,
+    train.fun = train_gam,
+    predict.fun = predict_gam,
+    rho=0.5
+  )
+  result_split <- rbind(result_split, data.frame(
+    Age = age_grid[i],
+    Prediction = predictions$pred,
+    Lower = predictions$lo,
+    Upper = predictions$up
+  ))
+}
+
+head(result_split)
+#saveRDS(result_split, "result_split_F1.rds")
+```
+
+
+```{r}
+ggplot(result_split, aes(x = Age, y = Prediction)) +
+  geom_line(color = "blue", size = 1) +  
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "lightblue", alpha = 0.4) +
+  labs(title = "Sleep duration with Split Conformal Prediction",
+       x = "Age",
+       y = "Sleep duration") +
+  theme_minimal()
+```
+
+```{r}
+detach(dt)
+```
+
+
+###Conformal prediction on Sleep duration when gender= male and smoking=1  (93 osservazioni)
+```{r}
+dt <- data[data$Gender == "Male" & data$Smoking.status == 1, c(2,6,12,13,15)]
+
+saveRDS(result_full, "result_full_M1.rds")
+saveRDS(result_split, "result_split_M1.rds")
+```
+
+
+###Conformal prediction on Sleep duration when gender= female and smoking=0 (163 osservazioni)
+```{r}
+dt <- data[data$Gender == "Female" & data$Smoking.status == 0, c(2,6,12,13,15)]
+
+saveRDS(result_full, "result_full_F0.rds")
+saveRDS(result_split, "result_split_F0.rds")
+```
+
+###Conformal prediction on Sleep duration when gender= male and smoking=0 (135 osservazioni)
+```{r}
+dt <- data[data$Gender == "Male" & data$Smoking.status == 0, c(2,6,12,13,15)]
+
+saveRDS(result_full, "result_full_F1.rds")
+saveRDS(result_split, "result_split_F1.rds")
+```
+
+
+
+
+### - Try with different values for caffeine when gender=female and smoking=0
+```{r}
+dt <- data[data$Gender == "Female" & data$Smoking.status == 0, c(2,6,12,13,15)]
+```
+
+
+```{r}
+covariate_names <- c("Age", "Caffeine.consumption", "Alcohol.consumption", "Exercise.frequency")
+y <- dt$Sleep.duration
+x <- dt[, covariate_names]
+
+attach(dt)
+```
+
+
+```{r}
+median_Alcohol <- median(dt$Alcohol.consumption, na.rm = TRUE)
+median_Exercise <- median(dt$Exercise.frequency, na.rm = TRUE)
+median_Age <- median(dt$Age, na.rm = TRUE)
+
+# Age has different values
+caffeine_grid <- seq(from = min(dt$Caffeine.consumption, na.rm = TRUE), to = max(dt$Caffeine.consumption, na.rm = TRUE), length.out = 100)
+
+# Test grid
+test_grid <- data.frame(
+  Age = rep(median_Age, length(caffeine_grid)),
+  Caffeine.consumption = caffeine_grid,
+  Alcohol.consumption = rep(median_Alcohol, length(caffeine_grid)),
+  Exercise.frequency = rep(median_Exercise, length(caffeine_grid))
+)
+```
+
+
+```{r}
+model_gam <- gam(y ~ Age + Caffeine.consumption + Alcohol.consumption + Exercise.frequency, data = dt)
+
+pred=predict(model_gam,newdata=test_grid)
+
+plot(Caffeine.consumption, y, pch = 16, col = "blue", xlab = "Caffeine consumption", ylab = "Response variable")
+
+lines(caffeine_grid, pred, col = "red", lwd = 2)
+```
+
+###Training function
+```{r}
+train_gam <- function(x, y, out = NULL) {
+  colnames(x) <- c('var1','var2','var3','var4')
+  train_data <- data.frame(y, x)
+  
+  # GAM model
+  model_gam <- gam(y ~ var1 + var2 + var3 + var4, data = train_data)
+}
+```
+
+###Prediction function
+```{r}
+predict_gam <- function(obj, new_x) {
+  new_x <- data.frame(new_x)
+  colnames(new_x) <- c('var1','var2','var3','var4')
+
+  predict.gam(obj, new_x)
+}
+```
+
+
+###Full conformal framework
+```{r}
+alpha <- 0.1
+
+result_full <- data.frame(Age = numeric(), Prediction = numeric(), Lower = numeric(), Upper = numeric())
+
+for(i in 1:nrow(test_grid)){
+  predictions <- conformal.pred(
+    x = cbind(Age,Caffeine.consumption,Alcohol.consumption,Exercise.frequency),
+    y = Sleep.duration,
+    x0 = c(median_Age,caffeine_grid[i],median_Alcohol,median_Exercise),
+    alpha = alpha,
+    verbose = FALSE,
+    train.fun = train_gam,
+    predict.fun = predict_gam,
+    num.grid.pts = 200
+  )
+  result_full <- rbind(result_full, data.frame(
+    Caffeine = caffeine_grid[i],
+    Prediction = predictions$pred,
+    Lower = predictions$lo,
+    Upper = predictions$up
+  ))
+}
+
+head(result_full)
+#saveRDS(result_full, "result_full_F1.rds")
+
+```
+
+
+```{r}
+ggplot(result_full, aes(x = Caffeine, y = Prediction)) +
+  geom_line(color = "blue", size = 1) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "lightblue", alpha = 0.4) +
+  labs(title = "Sleep duration with Full Conformal Prediction",
+       x = "Caffeine",
+       y = "Sleep duration") +
+  theme_minimal()
+```
+
+
+### Performance
+```{r}
+evaluate_predictions <- function(x.test, y.test, x.grid, lower, upper, view_plot=T){
+  covered <- (y.test >= lower)*(y.test<=upper)
+  coverage <- mean(covered)
+  width <- mean(upper-lower)
+  
+  if(view_plot){
+    idx.sort <- sort(x.test$x, index.return=TRUE)$ix
+    plot(x.test$x[idx.sort], y.test[idx.sort], col='lightblue', main=paste0("Prediction interval, alpha=",alpha, ", coverage=", round(coverage,2), ", width=", round(width,2)),
+     xlab="x test", ylab="y test")
+    lines(x.test$x[idx.sort], lower[idx.sort], lty=3, col='black', lwd=2)
+    lines(x.test$x[idx.sort], upper[idx.sort], lty=3, col='black', lwd=2)
+  }
+  
+  out <- list("coverage"=coverage,
+              "width"=width)
+  return(out)
+}
+```
+
+
+```{r}
+performance <- evaluate_predictions(
+  x.test=data.frame("x" = dt$Age),
+  y.test=dt$Sleep.duration,
+  lower=result_full_F1$Lower,
+  upper=result_full_F1$Upper)
+
+print(performance)
+# coverage 0.93
+# width 3.932161
+```
+
+
+###Conformal prediction on Sleep efficiency when gender= female and smoking=1 (61 osservazioni)
+```{r}
+dt <- data[data$Gender == "Female" & data$Smoking.status == 1, c(2,7,12,13,15)]
+```
+
+
+```{r}
+covariate_names <- c("Age", "Caffeine.consumption", "Alcohol.consumption", "Exercise.frequency")
+y <- dt$Sleep.efficiency
+x <- dt[, covariate_names]
+
+attach(dt)
+```
+
+```{r}
+median_Caffeine <- median(dt$Caffeine.consumption, na.rm = TRUE)
+median_Alcohol <- median(dt$Alcohol.consumption, na.rm = TRUE)
+median_Exercise <- median(dt$Exercise.frequency, na.rm = TRUE)
+
+# Age has different values
+age_grid <- seq(from = min(dt$Age, na.rm = TRUE), to = max(dt$Age, na.rm = TRUE), length.out = 100)
+
+# Test grid
+test_grid <- data.frame(
+  Age = age_grid,
+  Caffeine.consumption = rep(median_Caffeine, length(age_grid)),
+  Alcohol.consumption = rep(median_Alcohol, length(age_grid)),
+  Exercise.frequency = rep(median_Exercise, length(age_grid))
+)
+
+```
+
+```{r}
+model_gam <- gam(y ~ s(Age, bs = 'cr') + Caffeine.consumption + Alcohol.consumption + Exercise.frequency, data = dt)
+
+pred=predict(model_gam,newdata=test_grid)
+
+plot(Age, y, pch = 16, col = "blue", xlab = "Age", ylab = "Response variable")
+
+lines(age_grid, pred, col = "red", lwd = 2)
+#plot(age_grid, pred, col = "red", lwd = 2)
+```
+
+###Training function
+```{r}
+train_gam <- function(x, y, out = NULL) {
+  colnames(x) <- c('var1','var2','var3','var4')
+  train_data <- data.frame(y, x)
+  
+  # GAM model
+  model_gam <- gam(y ~ s(var1, bs = 'cr') + var2 + var3 + var4, data = train_data)
+}
+```
+
+###Prediction function
+```{r}
+predict_gam <- function(obj, new_x) {
+  new_x <- data.frame(new_x)
+  colnames(new_x) <- c('var1','var2','var3','var4')
+
+  predict.gam(obj, new_x)
+}
+```
+
+
+###Full conformal framework
+```{r}
+alpha <- 0.1
+
+result_full <- data.frame(Age = numeric(), Prediction = numeric(), Lower = numeric(), Upper = numeric())
+
+for(i in 1:nrow(test_grid)){
+  predictions <- conformal.pred(
+    x = cbind(Age,Caffeine.consumption,Alcohol.consumption,Exercise.frequency),
+    y = Sleep.efficiency,
+    x0 = c(age_grid[i],median_Caffeine,median_Alcohol,median_Exercise),
+    alpha = alpha,
+    verbose = FALSE,
+    train.fun = train_gam,
+    predict.fun = predict_gam,
+    num.grid.pts = 200
+  )
+  result_full <- rbind(result_full, data.frame(
+    Age = age_grid[i],
+    Prediction = predictions$pred,
+    Lower = predictions$lo,
+    Upper = predictions$up
+  ))
+}
+
+head(result_full)
+#saveRDS(result_full, "result_full_F1.rds")
+
+```
+
+
+```{r}
+ggplot(result_full, aes(x = Age, y = Prediction)) +
+  geom_line(color = "blue", size = 1) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "lightblue", alpha = 0.4) +
+  labs(title = "Sleep efficiency with Full Conformal Prediction",
+       x = "Age",
+       y = "Sleep duration") +
+  theme_minimal()
+```
+
+
