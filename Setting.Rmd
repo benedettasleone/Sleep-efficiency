@@ -40,6 +40,7 @@ data$Bedtime <- as.POSIXct(data$Bedtime, format = "%Y-%m-%d %H:%M:%S")
 data$Wakeup.time <- as.POSIXct(data$Wakeup.time, format = "%Y-%m-%d %H:%M:%S")
 # Estract the hour
 data$Bedtime <- as.numeric(format(data$Bedtime, "%H"))
+data$Bedtime <- ifelse(data$Bedtime < 4, data$Bedtime + 24, data$Bedtime)
 data$Wakeup.time <- as.numeric(format(data$Wakeup.time, "%H"))
 ```
 
