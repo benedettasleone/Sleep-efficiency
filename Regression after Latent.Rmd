@@ -1,0 +1,340 @@
+---
+title: "Regression after Latent"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### G1 lifestyle migliore ovvero poco alcohol poco caffe e molto esercizio
+### G2 lifestyle medio ovvero molto alcohol molto caffe e medio esercizio
+### G3 lifestyle basso ovvero poco alcohol molto caffe e poco esercizio
+```{r}
+library(ggplot2)
+
+datajitt$Group <- NA
+datajitt$Group[g1] <- "g1"
+datajitt$Group[g2] <- "g2"
+datajitt$Group[g3] <- "g3"
+```
+
+
+### Smoking status
+```{r}
+datajitt2=datajitt
+datajitt2$Smoking.status=data$Smoking.status
+```
+
+
+```{r}
+dataSmoke=datajitt[datajitt2$Smoking.status=='1',c(2,3,6:15,18)]
+dataNoSmoke=datajitt[datajitt2$Smoking.status=='0',c(2,3,6:15,18)]
+```
+
+
+```{r}
+dataF=datajitt[datajitt2$Gender=='Female',c(2,3,6:15,18)]
+dataM=datajitt[datajitt2$Gender=='Male',c(2,3,6:15,18)]
+data_combined <- rbind(dataF, dataM)
+data_combined$Group <- NA
+data_combined$Group[g1] <- "g1"
+data_combined$Group[g2] <- "g2"
+data_combined$Group[g3] <- "g3"
+```
+
+
+# >>>> Sleep duration vs age+gender per lifestyle
+```{r}
+modF_g1 <- lm(Sleep.duration ~ bs(Age, degree=3), data=dataF[g1,])
+modF_g2 <- lm(Sleep.duration ~ bs(Age, degree=3), data=dataF[g2,])
+modF_g3 <- lm(Sleep.duration ~ bs(Age, degree=3), data=dataF[g3,])
+modM_g1 <- lm(Sleep.duration ~ bs(Age, degree=3), data=dataM[g1,])
+modM_g2 <- lm(Sleep.duration ~ bs(Age, degree=3), data=dataM[g2,])
+modM_g3 <- lm(Sleep.duration ~ bs(Age, degree=3), data=dataM[g3,])
+
+
+ggplot(data_combined, aes(x = Age, y = Sleep.duration, color = Gender)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth(method = "lm", formula = y ~ bs(x, degree=3), se = FALSE) +
+  facet_wrap(~Group, nrow = 1) +
+  labs(title = "Regression Sleep Duration vs Age",
+       x = "Age",
+       y = "Sleep Duration") +
+  theme_minimal()
+```
+
+
+### Sleep duration vs age senza suddividere per genere
+```{r}
+mod_g1 <- lm(Sleep.duration ~ bs(Age, degree=3), data = datajitt[g1, ])
+mod_g2 <- lm(Sleep.duration ~ bs(Age, degree=3), data = datajitt[g2, ])
+mod_g3 <- lm(Sleep.duration ~ bs(Age, degree=3), data = datajitt[g3, ])
+
+
+ggplot(datajitt, aes(x = Age, y = Sleep.duration)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth(method = "lm", formula = y ~ bs(x, degree=3), se = FALSE) +
+  facet_wrap(~Group) +
+  labs(title = "Regression Sleep Duration vs Age",
+       x = "Age",
+       y = "Sleep Duration") +
+  theme_minimal()
+```
+
+### Sleep duration vs Age senza Gender in un unico grafico
+```{r}
+new_data <- data.frame(Age = seq(min(datajitt$Age), max(datajitt$Age), length.out = 100))
+
+
+new_data$g1 <- predict(mod_g1, newdata=new_data)
+new_data$g2 <- predict(mod_g2, newdata=new_data)
+new_data$g3 <- predict(mod_g3, newdata=new_data)
+
+
+new_data_long <- new_data %>%
+  tidyr::pivot_longer(cols = c(g1, g2, g3), names_to = "Group", values_to = "Prediction")
+
+# Plottiamo le curve sovrapposte
+ggplot(datajitt, aes(x = Age, y = Sleep.duration, color=Group)) +
+  geom_point(alpha = 0.6) + 
+  geom_line(data = new_data_long, aes(x = Age, y = Prediction, color = Group), size = 1) +
+  labs(title = "Regression Sleep Duration vs Age",
+       x = "Age",
+       y = "Sleep Duration",
+       color = "Group") +
+  scale_color_manual(values = c("g1" = "red", "g2" = "blue", "g3" = "green")) +
+  theme_minimal()
+```
+
+### Sleep duration vs Age senza Gender in un unico grafico con bande
+```{r}
+new_data <- data.frame(Age = seq(min(datajitt$Age), max(datajitt$Age), length.out = 100))
+
+pred_g1 <- predict(mod_g1, newdata = new_data, se.fit = TRUE)
+pred_g2 <- predict(mod_g2, newdata = new_data, se.fit = TRUE)
+pred_g3 <- predict(mod_g3, newdata = new_data, se.fit = TRUE)
+
+new_data <- new_data %>%
+  mutate(
+    g1 = pred_g1$fit,
+    g1_upper = pred_g1$fit + 2 * pred_g1$se.fit,
+    g1_lower = pred_g1$fit - 2 * pred_g1$se.fit,
+    g2 = pred_g2$fit,
+    g2_upper = pred_g2$fit + 2 * pred_g2$se.fit,
+    g2_lower = pred_g2$fit - 2 * pred_g2$se.fit,
+    g3 = pred_g3$fit,
+    g3_upper = pred_g3$fit + 2 * pred_g3$se.fit,
+    g3_lower = pred_g3$fit - 2 * pred_g3$se.fit
+  )
+
+
+library(scales)
+
+plot(datajitt$Age, datajitt$Sleep.duration, 
+     col = NA, pch = 1, # Nessun punto
+     xlab = "Age", ylab = "Sleep Duration", 
+     main = "Sleep Duration vs Age by Group", 
+     cex = 0.6, axes = FALSE) 
+
+
+polygon(c(new_data$Age, rev(new_data$Age)),
+        c(new_data$g1_lower, rev(new_data$g1_upper)),
+        col = alpha("blue", 0.2), border = NA) # Banda g1 colorata in blu chiaro
+lines(new_data$Age, new_data$g1, lwd = 1.5, col = "blue") # Linea g1 più sottile
+matlines(new_data$Age, new_data[, c("g1_lower", "g1_upper")], lwd = 1, col = "blue", lty = 1) # Linea banda g1
+
+polygon(c(new_data$Age, rev(new_data$Age)),
+        c(new_data$g2_lower, rev(new_data$g2_upper)),
+        col = alpha("green", 0.2), border = NA) # Banda g2 colorata in verde chiaro
+lines(new_data$Age, new_data$g2, lwd = 1.5, col = "green") # Linea g2 più sottile
+matlines(new_data$Age, new_data[, c("g2_lower", "g2_upper")], lwd = 1, col = "green", lty = 1) # Linea banda g2
+
+
+polygon(c(new_data$Age, rev(new_data$Age)),
+        c(new_data$g3_lower, rev(new_data$g3_upper)),
+        col = alpha("red", 0.2), border = NA) # Banda g3 colorata in rosso chiaro
+lines(new_data$Age, new_data$g3, lwd = 1.5, col = "red") # Linea g3 più sottile
+matlines(new_data$Age, new_data[, c("g3_lower", "g3_upper")], lwd = 1, col = "red", lty = 1) # Linea banda g3
+
+
+legend("top", legend = c("g1 (blue)", "g2 (green)", "g3 (red)"), 
+       col = c("blue", "green", "red"), lwd = 1.5, lty = 1, 
+       bty = "n", cex = 0.7) 
+
+```
+
+
+# Sleep efficiency vs age+gender per lifestyle
+```{r}
+modF_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataF[g1,])
+modF_g2 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataF[g2,])
+modF_g3 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataF[g3,])
+modM_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataM[g1,])
+modM_g2 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataM[g2,])
+modM_g3 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataM[g3,])
+
+
+ggplot(data_combined, aes(x = Age, y = Sleep.efficiency, color = Gender)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth(method = "lm", formula = y ~ bs(x, degree=3), se = FALSE) +
+  facet_wrap(~Group, nrow = 1) +
+  labs(title = "Regression Sleep efficiency vs Age",
+       x = "Age",
+       y = "Sleep efficiency") +
+  theme_minimal()
+```
+
+
+
+### Sleep efficiency vs age senza suddividere per genere
+```{r}
+mod_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g1, ])
+mod_g2 <- lm(Sleep.duration ~ bs(Age, degree=3), data = datajitt[g2, ])
+mod_g3 <- lm(Sleep.duration ~ bs(Age, degree=3), data = datajitt[g3, ])
+
+
+ggplot(datajitt, aes(x = Age, y = Sleep.efficiency)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth(method = "lm", formula = y ~ bs(x, degree=3), se = FALSE) +
+  facet_wrap(~Group) +
+  labs(title = "Regression Sleep efficiency vs Age",
+       x = "Age",
+       y = "Sleep efficiency") +
+  theme_minimal()
+```
+
+
+
+
+### Sleep efficiency vs Age senza Gender in un unico grafico
+```{r}
+mod_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g1, ])
+mod_g2 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g2, ])
+mod_g3 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data = datajitt[g3, ])
+
+new_data <- data.frame(Age = seq(min(datajitt$Age), max(datajitt$Age), length.out = 100))
+
+new_data$g1 <- predict(mod_g1, newdata=new_data)
+new_data$g2 <- predict(mod_g2, newdata=new_data)
+new_data$g3 <- predict(mod_g3, newdata=new_data)
+
+new_data_long <- new_data %>%
+  tidyr::pivot_longer(cols = c(g1, g2, g3), names_to = "Group", values_to = "Prediction")
+
+ggplot(datajitt, aes(x = Age, y = Sleep.efficiency, color=Group)) +
+  geom_point(alpha = 0.6) + 
+  geom_line(data = new_data_long, aes(x = Age, y = Prediction, color = Group), size = 1)+
+  labs(title = "Regression Sleep efficiency vs Age",
+       x = "Age",
+       y = "Sleep efficiency",
+       color = "Group") +
+  scale_color_manual(values = c("g1" = "red", "g2" = "blue", "g3" = "green")) +
+  theme_minimal()
+```
+
+
+```{r}
+new_data <- data.frame(Age = seq(min(datajitt$Age), max(datajitt$Age), length.out = 100))
+
+
+pred_g1 <- predict(mod_g1, newdata = new_data, se.fit = TRUE)
+pred_g2 <- predict(mod_g2, newdata = new_data, se.fit = TRUE)
+pred_g3 <- predict(mod_g3, newdata = new_data, se.fit = TRUE)
+
+
+new_data <- new_data %>%
+  mutate(
+    g1 = pred_g1$fit,
+    g1_upper = pred_g1$fit + 2 * pred_g1$se.fit,
+    g1_lower = pred_g1$fit - 2 * pred_g1$se.fit,
+    g2 = pred_g2$fit,
+    g2_upper = pred_g2$fit + 2 * pred_g2$se.fit,
+    g2_lower = pred_g2$fit - 2 * pred_g2$se.fit,
+    g3 = pred_g3$fit,
+    g3_upper = pred_g3$fit + 2 * pred_g3$se.fit,
+    g3_lower = pred_g3$fit - 2 * pred_g3$se.fit
+  )
+
+
+library(scales)
+
+
+plot(datajitt$Age, datajitt$Sleep.efficiency, 
+     col = NA, pch = 1, 
+     xlab = "Age", ylab = "Sleep Efficiency", 
+     main = "Sleep Efficiency vs Age by Group", 
+     cex = 0.6, axes = FALSE) 
+
+
+polygon(c(new_data$Age, rev(new_data$Age)),
+        c(new_data$g1_lower, rev(new_data$g1_upper)),
+        col = alpha("blue", 0.2), border = NA) 
+lines(new_data$Age, new_data$g1, lwd = 1.5, col = "blue") 
+matlines(new_data$Age, new_data[, c("g1_lower", "g1_upper")], lwd = 1, col = "blue", lty = 1) 
+
+
+polygon(c(new_data$Age, rev(new_data$Age)),
+        c(new_data$g2_lower, rev(new_data$g2_upper)),
+        col = alpha("green", 0.2), border = NA) 
+lines(new_data$Age, new_data$g2, lwd = 1.5, col = "green")
+matlines(new_data$Age, new_data[, c("g2_lower", "g2_upper")], lwd = 1, col = "green", lty = 1) 
+
+
+polygon(c(new_data$Age, rev(new_data$Age)),
+        c(new_data$g3_lower, rev(new_data$g3_upper)),
+        col = alpha("red", 0.2), border = NA) 
+lines(new_data$Age, new_data$g3, lwd = 1.5, col = "red") 
+matlines(new_data$Age, new_data[, c("g3_lower", "g3_upper")], lwd = 1, col = "red", lty = 1) # Linea banda g3
+
+
+legend("bottom", legend = c("g1 (blue)", "g2 (green)", "g3 (red)"), 
+       col = c("blue", "green", "red"), lwd = 1.5, lty = 1, 
+       bty = "n", cex = 0.5) 
+
+```
+
+
+# Sleep efficiency vs age+SMOKE per lifestyle
+```{r}
+modS_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataSmoke[g1,])
+modS_g2 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataSmoke[g2,])
+modS_g3 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataSmoke[g3,])
+modN_g1 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataNoSmoke[g1,])
+modN_g2 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataNoSmoke[g2,])
+modN_g3 <- lm(Sleep.efficiency ~ bs(Age, degree=3), data=dataNoSmoke[g3,])
+
+
+ggplot(datajitt2, aes(x = Age, y = Sleep.efficiency, color = Smoking.status)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth(method = "lm", formula = y ~ bs(x, degree=3), se = FALSE) +
+  facet_wrap(~Group, nrow = 1) +
+  labs(title = "Regression Sleep efficiency vs Age",
+       x = "Age",
+       y = "Sleep efficiency") +
+  theme_minimal()
+```
+
+
+# >>>> Awakenings vs age+gender per lifestyle
+```{r}
+modF_g1 <- lm(Awakenings ~ bs(Age, degree=3), data=dataF[g1,])
+modF_g2 <- lm(Awakenings ~ bs(Age, degree=3), data=dataF[g2,])
+modF_g3 <- lm(Awakenings ~ bs(Age, degree=3), data=dataF[g3,])
+modM_g1 <- lm(Awakenings ~ bs(Age, degree=3), data=dataM[g1,])
+modM_g2 <- lm(Awakenings ~ bs(Age, degree=3), data=dataM[g2,])
+modM_g3 <- lm(Awakenings ~ bs(Age, degree=3), data=dataM[g3,])
+
+
+ggplot(data_combined, aes(x = Age, y = Awakenings, color = Gender)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth(method = "lm", formula = y ~ bs(x, degree=3), se = FALSE) +
+  facet_wrap(~Group, nrow = 1) +
+  labs(title = "Regression Awakenings vs Age",
+       x = "Age",
+       y = "Awakenings") +
+  theme_minimal()
+```
+
+
