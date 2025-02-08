@@ -1,14 +1,5 @@
----
-title: "nonparam"
-author: "Curci, Di Marino, Leone, Stola"
-date: "2024-12-03"
-output: html_document
-editor_options: 
-  chunk_output_type: console
----
 
 ##### Initial cleaning
-
 ```{r}
 rm(list=ls())
 graphics.off()
@@ -17,7 +8,6 @@ cat('\14')
 ```
 
 ##### Libraries and packages
-
 ```{r}
 library(stringi)
 library(naniar)
@@ -26,143 +16,101 @@ library(DepthProc)
 library(RColorBrewer)
 library(tidyverse)
 library(dplyr)
+library(corrplot)
 ```
 
-
 ##### Upload of dataset
-
 ```{r}
 setwd(getwd())
-data <- read.csv("Sleep_Efficiency.csv")
+data<-read.csv("Sleep_efficiency.csv")
 n<-dim(data)[1]
 p<-dim(data)[2]
 names(data)
 ```
 
 ###### Convert variable "Smoking status" into a binary variable
-
 ```{r}
-#sum(is.na(data$Smoking.status)) Controllo che non ci siano NA
+sum(is.na(data$Smoking.status)) # no NAs
 data$Smoking.status <- as.factor(ifelse(data$Smoking.status == "Yes", 1, 0))
 ```
 
-
+###### Convert Bedtime and Wakeup time
 ```{r}
-# Conversione in formato POSIXct
 data$Bedtime <- as.POSIXct(data$Bedtime, format = "%Y-%m-%d %H:%M:%S")
 data$Wakeup.time <- as.POSIXct(data$Wakeup.time, format = "%Y-%m-%d %H:%M:%S")
-# Estrazione dell'ora
+# Estract the hour
 data$Bedtime <- as.numeric(format(data$Bedtime, "%H"))
 data$Wakeup.time <- as.numeric(format(data$Wakeup.time, "%H"))
 ```
 
-###### Raggruppamento delle età in fasce di 10 anni ciascuna
+###### Grouping age by decades
 ```{r}
-# sum(is.na(data$Age)) # verifichiamo che non ci siano NA
-data$AgeGroup <- cut(data$Age,
-                     breaks = seq(min(data$Age), max(data$Age), length.out = nclass.FD(data$Age)),  # Specifica gli intervalli, scelti seconodo il criterio di Freedman & Diaconis
-                     include.lowest = T, right = T) # Intervalli chiusi a destra
+# sum(is.na(data$Age)) # no NAs
+data$AgeGroup <- cut(data$Age, breaks = seq(min(data$Age), max(data$Age), 
+                length.out = nclass.FD(data$Age)), include.lowest = T, right = T) 
 
-
-# Creare una tabella di contingenza tra FasciaEta e Genere
-tabella <- table(data$AgeGroup, data$Gender)
-
-# Mostra la tabella
-# tabella
+table(data$AgeGroup, data$Gender)
 ```
 
-
-##### NA 
-
+##### NAs 
 ```{r}
-summary(data) # 65 NAs in totale
-sum(complete.cases(data)) # 388 osservazioni complete
-
-sort(colSums(is.na(data))[!(colSums(is.na(data))==0)],decreasing = T) # Le variabili con più NA
-```
-
-63 osservazioni con 1 dato mancante 1 osservazione con 2 dati mancanti
-Le variabili che presentano NAs sono: - Awakenings: 20 NAs -
-Caffeine.consumption 25 - Alcohol.consumption 14 - Exercise.frequency 6
-E' un peccato toglierli, ce li teniamo e li imputiamo! Come? Proviamo
-regressione,mediana, basandoci sulle frequenze delle variabili
-categoriche (genere,fascia d'età)
-
-```{r}
-# data_complete <- data[which(!complete.cases(data)),] #dataset delle osservazioni con almeno un NA
-
-nadata <- data[which(!complete.cases(data)),] #dataset delle osservazioni con almeno un NA
-
-(natabella <- table(nadata$AgeGroup, nadata$Gender))
-round((tabella-natabella)/tabella,3)
-
-rm(nadata)
-
+summary(data) # 65 NAs 
+sum(complete.cases(data)) # 388 complete observations, 64 incomplete
+sort(colSums(is.na(data))[!(colSums(is.na(data))==0)],decreasing = T) 
 ```
 
 ###### NA imputation with Age_group median
-
 ```{r}
-# Suddividi in gruppi e sostituisci i NA con la mediana del gruppo
 data <-data %>%
-  group_by(AgeGroup, Gender) %>%        # Crea i gruppi basati su età e genere
-  mutate(across(where(is.numeric),        # Applica solo alle colonne numeriche
-                ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
-  ungroup()                    # Rimuovi i gruppi
-
+  group_by(AgeGroup, Gender) %>%        
+  mutate(across(where(is.numeric),        
+          ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  ungroup()     
 summary(data)
 ```
 
-###### Analisi esplorataiva: errori imputazione su Awakenings
+###### Exploratory analysis: errors in Awakenings imputation
 ```{r}
 levels(as.factor(data$Awakenings))
 data$Awakenings<-round(data$Awakenings)
 data$Exercise.frequency<-round(data$Exercise.frequency)
 ```
 
-
 ##### Correlazione
-
 ```{r}
 numeric_cols <- which(sapply(data, is.numeric))[-1]
-pairs(data[,numeric_cols])
+# pairs(data[,numeric_cols])
 corr_matrix <- cor(data[,numeric_cols], method = "pearson")
 # View(corr_matrix)
-heatmap(corr_matrix)
-library(corrplot)
+# heatmap(corr_matrix)
 par(mfrow=c(1,1))
-corrplot(corr_matrix)
+# corrplot(corr_matrix)
 ```
 
-##### Standardize data 
-Standardizzo variabili numeriche
+##### Standardize numeric variables 
 ```{r}
 datastd<- scale(data[,numeric_cols])
 datastd<-cbind(datastd,data[,-numeric_cols])
 ```
 
-
 ##### Split the dataset 
-Scelgo righe con una certa condizione
 ```{r}
-dataf <- filter(data, Gender == "Female")
-datagiovani <- filter(data, AgeGroup == "[16,23)")
-datanocaffe <- filter(data, Caffeine.consumption < 24)
-rm(dataf, datagiovani, datanocaffe)
+datafemale <- filter(data, Gender == "Female")
+datayoung <- filter(data, AgeGroup == "[16,23)")
+datacoffee <- filter(data, Caffeine.consumption < 24)
+rm(datafemale, datayoung, datacoffee)
 ```
 
-##### Estrazione colonne di un dataset
-
-Seleziono colonne specifiche 
+##### Extract specific columns 
 ```{r}
 sleepdata<-dplyr::select(data, Age, Gender)
 rm(sleepdata)
 ```   
 
-
+##### Data jittering 
 ```{r}
-jitt<-rnorm(452,0,0.01)
-datajitt<-data
-datajitt$Deep.sleep.percentage<-datajitt$Deep.sleep.percentage+jitt
+set.seed(1524)
+datajitt <- data %>%
+  mutate(across(c(6, 11, 12, 13, 14, 15), ~  pmax(0,jitter(as.numeric(.), length(levels(as.factor(.))),0)) ))
 ```
 
