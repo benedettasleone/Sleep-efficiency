@@ -1,0 +1,60 @@
+---
+title: "Non parametric regression"
+output: html_document
+date: "2025-02-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+smk<-as.factor(data$Smoking.status)
+gndr<-as.factor(data$Gender)
+exer<-as.factor(data$Exercise.frequency)
+datajitt <- data %>%
+  mutate(across(c(4,6, 11, 12, 13), ~  pmax(0,
+                                          jitter(as.numeric(.), length(levels(as.factor(.))),0)
+                                          )
+                ))
+
+lm1<-lm(Sleep.efficiency ~ exer+smk+gndr+Alcohol.consumption+Caffeine.consumption+Bedtime+Wakeup.time+Age,data=datajitt)
+summary(lm1)
+#reduce the model
+lm1<-lm(Sleep.efficiency ~ exer+smk+Alcohol.consumption+Bedtime+Age,data=datajitt)
+summary(lm1)
+
+shapiro.test(lm1$residuals)
+#not normal residuals, let's try a nonparametric model
+
+model_gam=gam(Sleep.efficiency ~ exer+ smk+ s(Alcohol.consumption,bs='cr')+s(Age,bs='cr')+s(Bedtime,bs='cr'),data=datajitt)
+summary(model_gam)
+
+#global test on the significance of the model
+B=1000
+T0_glob<-summary(model_gam)$r.sq / summary(model_gam)$scale  # Approximate F-statistic
+T_H0glob <- numeric(B)
+
+for(perm in 1:B){
+  permutation <- sample(n)
+  
+  Y.perm.glob <- datajitt$Sleep.efficiency[permutation]
+  model_perm<-gam(Y.perm.glob ~ exer+ smk+ s(Alcohol.consumption,bs='cr')+s(Age,bs='cr')+s(Bedtime,bs='cr'),data=datajitt)
+  T_H0glob[perm] <- summary(model_perm)$r.sq / summary(model_perm)$scale
+}
+
+sum(T_H0glob>=T0_glob)/B
+```
+the global model is significant
+
+
+###quantile regression 
+```{r}
+library(quantreg)
+library(splines)
+#quantile
+exer<-as.factor(data$Exercise.frequency)
+modq <- summary(rq(Sleep.efficiency ~ bs(Age, degree=3)+exer+smk+bs(Alcohol.consumption,degree=3), tau = 10:90/100, data = datajitt))
+plot(modq,mfrow = c(1,2))
+```
+
