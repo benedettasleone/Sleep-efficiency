@@ -1,0 +1,83 @@
+---
+title: "conformal classification"
+output: html_document
+date: "2025-02-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(nnet)
+
+alpha <- 0.1
+n <- dim(datajitt)[1]
+training.prop1 <- 0.80
+set.seed(1524)
+training.id   <- sample(1:n, ceiling(n*training.prop1), replace = F) 
+
+#Training dataset
+X<-datajitt[training.id,c(12,13,15,17)]
+test<-datajitt[-training.id,c(12,13,15,17)]
+
+n <- dim(X)[1]
+training.prop2 <- 0.50
+training.id2  <- sample(1:n, ceiling(n*training.prop2), replace = F) 
+training.set  <- X[training.id2,]    # Proper Training Set
+x.obs         <- X[-training.id2,]  # Calibration set
+
+X$Group <- as.factor(X$Group)
+training.fit <- multinom(Group ~ Caffeine.consumption+Alcohol.consumption+Exercise.frequency,data=X)
+
+NC <- function(z.aug, i) {
+  # Predizione con il modello multinomiale
+  P_pred <- predict(training.fit, newdata = data.frame(
+    Caffeine.consumption = z.aug[i, 1],
+    Alcohol.consumption = z.aug[i, 2],
+    Exercise.frequency = z.aug[i, 3]
+  ), type = "probs")  
+  
+  #print(P_pred)
+  
+  category_index <- which(levels(X$Group) == as.character(z.aug[i, "Group"]))
+  
+  return(P_pred[category_index])
+}
+
+
+p.value <- matrix(nrow = dim(test)[1], ncol = 3)
+x2.new.grid <- c("g1","g2","g3")
+for(k in 1:dim(test)[1]) {
+  for(h in 1:3) {
+    temp<-test[k,]
+    temp$Group=x2.new.grid[h]
+    x.obs.aug <- rbind(x.obs,temp)
+    scores <- numeric(dim(x.obs.aug)[1])
+    for (i in 1:dim(x.obs.aug)[1]) {
+    scores[i] <- NC(x.obs.aug, i)
+    }
+  p.value[k,h] <- sum(scores >= scores[dim(x.obs.aug)[1]])/(dim(x.obs.aug)[1])
+  print(c(k,h))
+ }
+}
+
+#check the accuracy 
+assigned_groups <- p.value >= alpha
+true_groups <- test[, 4,drop = TRUE]
+group_levels <- x2.new.grid
+correct_assignments <- 0
+for (k in 1:nrow(test)) {
+  predicted_groups <- group_levels[assigned_groups[k, ]]
+  if (true_groups[k] %in% predicted_groups) {
+    correct_assignments <- correct_assignments + 1
+  }
+  else{ print(k)}
+}
+print(correct_assignments)
+accuracy <- correct_assignments / nrow(test)
+print(paste("Accuracy:", accuracy))
+
+
+```
+
